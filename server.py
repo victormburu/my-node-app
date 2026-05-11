@@ -1,4 +1,6 @@
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
+
 import asyncio
 
 try:
@@ -16,6 +18,14 @@ from tick_engine import (
 )
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # =========================================
 # START BACKGROUND STREAM
