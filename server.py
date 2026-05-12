@@ -1,107 +1,62 @@
-from fastapi.middleware.cors import CORSMiddleware
+# server.py
+import asyncio
+import uvicorn
 from fastapi import FastAPI
 
-import asyncio
-
-try:
-    import uvicorn
-except ImportError:
-    uvicorn = None
-
+from ws_client import stream_ticks
 from tick_engine import (
-    stream_ticks,
-    last_1000_ticks,
-    build_market_analytics,
-    over_under_analysis,
-    matches_differs_analysis,
-    generate_signal
+    TICKS,
+    digit_counts,
+    digit_probability,
+    over_under,
+    signal_engine,
+    matches_differs,
 )
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-# =========================================
+# =========================
 # START BACKGROUND STREAM
-# =========================================
-
+# =========================
 @app.on_event("startup")
-async def startup_event():
-
+async def startup():
     asyncio.create_task(stream_ticks())
 
-# =========================================
-# ROOT
-# =========================================
 
-@app.get("/")
-def root():
-
-    return {
-        "message": "Deriv Analytics Engine Running"
-    }
-
-# =========================================
-# DASHBOARD API
-# =========================================
-
+# =========================
+# WIX DASHBOARD API
+# =========================
 @app.get("/api/dashboard")
 def dashboard():
 
-    market = build_market_analytics()
-
-    over_under = over_under_analysis()
-
-    matches_differs = matches_differs_analysis(
-        target_digit=7
-    )
-
-    signal = generate_signal()
+    if len(TICKS) < 50:
+        return {
+            "ready": False,
+            "message": "Collecting ticks..."
+        }
 
     return {
-
         "ready": True,
+        "tick_count": len(TICKS),
 
-        "tick_count": len(last_1000_ticks),
+        "digit_probability": digit_probability(),
 
-        # =================================
-        # MARKET ANALYTICS
-        # =================================
-        "market_statistics": market["market_statistics"],
+        "over_under_analysis": over_under(5),
 
-        "live_analytics": market["live_analytics"],
+        "matches_differs_analysis": matches_differs(7),
 
-        # =================================
-        # OVER / UNDER
-        # =================================
-        "over_under_analysis": over_under,
-
-        # =================================
-        # MATCH / DIFFER
-        # =================================
-        "matches_differs_analysis": matches_differs,
-
-        # =================================
-        # SIGNAL ENGINE
-        # =================================
-        "signal_engine": signal
+        "signal_engine": signal_engine(),
     }
 
-# =========================================
-# RUN SERVER
-# =========================================
+
+# =========================
+# HEALTH CHECK
+# =========================
+@app.get("/")
+def home():
+    return {"status": "Deriv Engine Running"}
+
 
 if __name__ == "__main__":
-
-    uvicorn.run(
-        "server:app",
-        host="0.0.0.0",
-        port=3000,
-        reload=True
-    )
+    uvicorn.run("server:app", host="0.0.0.0", port=3000, reload=True)
