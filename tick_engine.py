@@ -4,6 +4,7 @@ from collections import defaultdict, Counter
 class TickEngine:
     def __init__(self, max_history=1000, window=50):
         self.history = []
+        self.last_signal = None
         self.max_history = max_history
         self.window = window
 
@@ -196,11 +197,11 @@ class TickEngine:
             "frequencies": self.digit_frequencies(),
             "probabilities": self.digit_probabilities(),
             "bias": self.bias_signal(),
-            
-            # STEP 4 additions
             "transition_model": self.transition_probabilities(),
             "prediction": self.predict_next_digit(),
-            "streak": self.detect_streak()
+            "streak": self.detect_streak(),
+            "regime": self.market_regime(),
+            "performance": self.performance_summary()
         }
         
     
@@ -263,12 +264,82 @@ class TickEngine:
         if confidence < 0.62:
             signal = "NO_TRADE"
 
-        return {
+        signal_output = {
             "signal": signal,
             "confidence": round(confidence, 3),
             "bias": bias,
             "prediction": prediction
         }
 
+        self.last_signal = signal_output
+        return signal_output
+    
+    def update_performance(self):
+        """
+        Simple proxy evaluation:
+        compares last signal vs latest digit movement
+        """
+
+        if len(self.history) < 2 or not self.last_signal:
+            return None
+
+        last_digit = self.history[-1]
+        prev_digit = self.history[-2]
+
+        signal = self.last_signal["signal"]
+
+        outcome = "NO_RESULT"
+
+        # OVER means expect high digits (5-9)
+        if signal == "OVER":
+            outcome = "WIN" if last_digit > prev_digit else "LOSS"
+
+        elif signal == "UNDER":
+            outcome = "WIN" if last_digit < prev_digit else "LOSS"
+
+        self.signal_history.append({
+            "signal": signal,
+            "outcome": outcome
+        })
+
+        return outcome
     
     
+    def performance_summary(self):
+        wins = sum(1 for s in self.signal_history if s["outcome"] == "WIN")
+        losses = sum(1 for s in self.signal_history if s["outcome"] == "LOSS")
+
+        total = wins + losses
+
+        return {
+            "total_signals": total,
+            "wins": wins,
+            "losses": losses,
+            "accuracy": round(wins / total, 3) if total > 0 else 0
+        }
+        
+    def market_regime(self):
+        window = self.get_window()
+
+        if len(window) < 10:
+            return {"regime": "insufficient_data"}
+
+        changes = sum(
+            1 for i in range(1, len(window))
+            if window[i] != window[i-1]
+        )
+
+        stability = changes / len(window)
+
+        # Interpretation
+        if stability < 0.45:
+            regime = "trending"
+        elif stability < 0.75:
+            regime = "ranging"
+        else:
+            regime = "chaotic"
+
+        return {
+            "regime": regime,
+            "stability": round(stability, 3)
+        }

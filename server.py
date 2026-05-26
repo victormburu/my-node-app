@@ -2,6 +2,9 @@ from fastapi import FastAPI, WebSocket
 from tick_engine import TickEngine
 import asyncio
 from ws_client import DerivStream
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 
 app = FastAPI()
 streamer = None
@@ -70,3 +73,11 @@ async def startup():
     asyncio.create_task(streamer.connect())
 
     print("Deriv live stream started")
+    
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/dashboard")
+def dashboard():
+    return FileResponse("static/index.html")
