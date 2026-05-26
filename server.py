@@ -1,62 +1,60 @@
-# server.py
-import asyncio
-import uvicorn
-from fastapi import FastAPI
-
-from ws_client import stream_ticks
-from tick_engine import (
-    TICKS,
-    digit_counts,
-    digit_probability,
-    over_under,
-    signal_engine,
-    matches_differs,
-)
+from fastapi import FastAPI, WebSocket
+from tick_engine import TickEngine
 
 app = FastAPI()
 
+engine = TickEngine()
 
-# =========================
-# START BACKGROUND STREAM
-# =========================
-@app.on_event("startup")
-async def startup():
-    asyncio.create_task(stream_ticks())
-
-
-# =========================
-# WIX DASHBOARD API
-# =========================
-@app.get("/api/dashboard")
-def dashboard():
-
-    if len(TICKS) < 50:
-        return {
-            "ready": False,
-            "message": "Collecting ticks..."
-        }
-
-    return {
-        "ready": True,
-        "tick_count": len(TICKS),
-
-        "digit_probability": digit_probability(),
-
-        "over_under_analysis": over_under(5),
-
-        "matches_differs_analysis": matches_differs(7),
-
-        "signal_engine": signal_engine(),
-    }
-
-
-# =========================
-# HEALTH CHECK
-# =========================
+# ----------------------------
+# STEP 6: BASIC HEALTH CHECK
+# ----------------------------
 @app.get("/")
 def home():
-    return {"status": "Deriv Engine Running"}
+    return {"status": "running", "message": "Tick engine live"}
 
+# ----------------------------
+# STEP 6: RECEIVE TICK
+# ----------------------------
+@app.post("/tick")
+def receive_tick(tick: dict):
+    """
+    Example payload:
+    { "quote": 1234.56 }
+    """
 
-if __name__ == "__main__":
-    uvicorn.run("server:app", host="0.0.0.0", port=3000, reload=True)
+    result = engine.process_tick(tick)
+
+    if result is None:
+        return {"error": "invalid tick"}
+
+    return {
+        "latest": result,
+        "signal": engine.generate_signal()
+    }
+
+# ----------------------------
+# STEP 6: ANALYTICS DASHBOARD
+# ----------------------------
+@app.get("/analytics")
+def analytics():
+    return engine.analytics()
+
+# ----------------------------
+# STEP 6: SIGNAL ONLY
+# ----------------------------
+@app.get("/signal")
+def signal():
+    return engine.generate_signal()
+
+@app.websocket("/stream")
+async def stream(websocket: WebSocket):
+    await websocket.accept()
+
+    while True:
+        data = engine.analytics()
+        signal = engine.generate_signal()
+
+        await websocket.send_json({
+            "analytics": data,
+            "signal": signal
+        })

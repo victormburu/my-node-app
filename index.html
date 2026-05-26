@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Deriv WebSocket Test</title>
+</head>
+
+<body>
+
+    <h1>Deriv Live Tick</h1>
+
+    <div id="price">Waiting...</div>
+    <div id="digit">-</div>
+
+    <script>
+        const priceDiv = document.getElementById("price");
+        const digitDiv = document.getElementById("digit");
+
+        const ws = new WebSocket(
+            "wss://ws.derivws.com/websockets/v3?app_id=1089"
+        );
+
+        ws.onopen = () => {
+
+            console.log("Connected to Deriv");
+
+            ws.send(JSON.stringify({
+                ticks: "R_10",
+                subscribe: 1
+            }));
+
+        };
+
+        ws.onmessage = (event) => {
+
+            const data = JSON.parse(event.data);
+
+            if (data.tick) {
+
+                const price = data.tick.quote;
+
+                const lastDigit =
+                    price.toString().slice(-1);
+
+                priceDiv.innerHTML =
+                    "Price: " + price;
+
+                digitDiv.innerHTML =
+                    "Last Digit: " + lastDigit;
+
+                console.log(price, lastDigit);
+            }
+
+        };
+
+        ws.onerror = (error) => {
+            console.log("WebSocket Error:", error);
+        };
+
+        ws.onclose = () => {
+            console.log("Connection Closed");
+        };
+    </script>
+
+</body>
+
+</html>
