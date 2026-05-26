@@ -1,8 +1,10 @@
 from fastapi import FastAPI, WebSocket
 from tick_engine import TickEngine
+import asyncio
+from ws_client import DerivStream
 
 app = FastAPI()
-
+streamer = None
 engine = TickEngine()
 
 # ----------------------------
@@ -58,3 +60,13 @@ async def stream(websocket: WebSocket):
             "analytics": data,
             "signal": signal
         })
+        
+@app.on_event("startup")
+async def startup():
+    global streamer
+
+    streamer = DerivStream(engine, symbol="R_100")
+
+    asyncio.create_task(streamer.connect())
+
+    print("Deriv live stream started")
