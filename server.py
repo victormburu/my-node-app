@@ -8,12 +8,12 @@ engine = TickEngine()
 # ----------------------------
 # STEP 6: BASIC HEALTH CHECK
 # ----------------------------
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def home():
-    return {"status": "running", "message": "Tick engine live"}
+    return {"status": "ok", "message": "Tick engine live"}
 
 # ----------------------------
-# STEP 6: RECEIVE TICK
+# STEP 6: RECEIVE TICK DATA
 # ----------------------------
 @app.post("/tick")
 def receive_tick(tick: dict):
