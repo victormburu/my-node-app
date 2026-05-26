@@ -63,7 +63,7 @@ async def stream(websocket: WebSocket):
             "analytics": data,
             "signal": signal
         })
-        
+        await asyncio.sleep(1)
 @app.on_event("startup")
 async def startup():
     global streamer

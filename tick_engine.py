@@ -4,12 +4,15 @@ from collections import defaultdict, Counter
 class TickEngine:
     def __init__(self, max_history=1000, window=50):
         self.history = []
-        self.last_signal = None
         self.max_history = max_history
         self.window = window
 
         # STEP 4: transition matrix
         self.transitions = defaultdict(list)
+        
+        self.last_signal = None
+        self.signal_threshold = 0.62
+        self.signal_history = []
 
     # ---------------------------
     # STEP 2: tick processing
@@ -238,7 +241,7 @@ class TickEngine:
         # -----------------------------
         # RULE 2: prediction alignment
         # -----------------------------
-        predicted_digit = prediction.get("prediction") if prediction else None
+        predicted_digit = int(prediction.get("prediction")) if prediction else None
 
         if predicted_digit is not None:
             if predicted_digit >= 5 and signal == "OVER":
