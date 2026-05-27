@@ -2,34 +2,30 @@ from tick_engine import TickEngine
 
 class Backtester:
     def __init__(self, ticks):
-        """
-        ticks = historical list of price values
-        e.g. [1234.56, 1234.57, ...]
-        """
         self.ticks = ticks
 
     def run(self):
         engine = TickEngine()
-
         results = []
 
-        for price in self.ticks:
+        for i, price in enumerate(self.ticks):
             tick = {"quote": price}
 
-            engine.process_tick(tick)
+            output = engine.process_tick(tick)
 
-            signal = engine.generate_signal()
-            regime = engine.market_regime()
+            if not output:
+                continue
 
-            # simulate outcome using next tick (simple proxy)
             results.append({
+                "index": i,
                 "price": price,
-                "signal": signal["signal"],
-                "confidence": signal["confidence"],
-                "regime": regime["regime"]
+                "signal": output["signal"],
+                "confidence": output["confidence"],
+                "regime": output["volatility"]
             })
 
         return results
+    
 class BacktestReport:
     def __init__(self, results):
         self.results = results
@@ -46,11 +42,11 @@ class BacktestReport:
             signal = current["signal"]
 
             if signal == "NO_TRADE":
+                
                 continue
 
             trades += 1
 
-            # simplified directional evaluation
             if signal == "OVER":
                 if next_price > current["price"]:
                     wins += 1
@@ -63,11 +59,10 @@ class BacktestReport:
                 else:
                     losses += 1
 
-        accuracy = wins / trades if trades > 0 else 0
-
         return {
             "total_trades": trades,
             "wins": wins,
             "losses": losses,
-            "accuracy": round(accuracy, 3)
+            "accuracy": round(wins / trades, 3) if trades else 0
         }
+        

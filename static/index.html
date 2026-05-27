@@ -101,6 +101,13 @@
         </select>
     </div>
 
+    <button onclick="setLive()">Live Mode</button>
+    <button onclick="loadReplay()">Replay Mode</button>
+
+    <div id="heatmap"></div>
+    <div id="filter-status"></div>
+    <div id="performance"></div>
+
     <div class="grid">
 
         <div class="card">
@@ -148,6 +155,99 @@
 
             fetchData();
         });
+
+        function setLive() {
+            fetch("/mode/live", {
+                method: "POST"
+            });
+        }
+
+        async function loadPerformance(symbol) {
+
+            const res = await fetch(`/performance/${symbol}`);
+            const data = await res.json();
+
+            document.getElementById("performance").innerHTML =
+                JSON.stringify(data, null, 2);
+        }
+
+        async function loadReplay() {
+            const res = await fetch("/replay/load/R_25", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(window.backtestData)
+            });
+
+            startReplayLoop();
+        }
+
+        document.getElementById("filter-status").innerText =
+            output.signal.signal ?
+            "VALID SIGNAL" :
+            "FILTERED OUT";
+
+        function renderHeatmap(data) {
+            let html = "";
+
+            for (let vol in data) {
+                html += `<h3>${vol.toUpperCase()} VOLATILITY</h3>`;
+
+                const patterns = data[vol];
+
+                for (let pattern in patterns) {
+                    html += `<b>${pattern}</b><br>`;
+
+                    const digits = patterns[pattern];
+
+                    for (let d in digits) {
+                        html += `Digit ${d}: ${digits[d]} &nbsp;&nbsp;`;
+                    }
+
+                    html += "<br><br>";
+                }
+            }
+
+            document.getElementById("heatmap").innerHTML = html;
+        }
+
+        async function loadHeatmap(symbol) {
+            const res = await fetch(`/heatmap/${symbol}`);
+            const data = await res.json();
+
+            renderHeatmap(data);
+        }
+
+        async function startReplayLoop() {
+            const interval = setInterval(async() => {
+
+                const res = await fetch("/replay/step/R_25");
+                const data = await res.json();
+
+                if (data.done) {
+                    clearInterval(interval);
+                    return;
+                }
+
+                renderTick(data.tick, data.output);
+
+            }, 400);
+        }
+
+        function renderTick(tick, output) {
+            document.getElementById("price").innerText = tick.quote;
+            document.getElementById("vol").innerText = output.volatility;
+
+            if (output.signal ? .signal) {
+                document.getElementById("signal").innerText =
+                    output.signal.digit + " (" + output.signal.confidence + ")";
+            }
+        }
+
+        setInterval(() => {
+            loadHeatmap("R_25");
+        }, 3000);
 
         async function fetchData() {
 

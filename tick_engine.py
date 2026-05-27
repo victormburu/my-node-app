@@ -1,348 +1,98 @@
-from collections import defaultdict, Counter
-
+from volatility_engine import VolatilityEngine
+from performance_tracker import PerformanceTracker
+from heatmap_filter import HeatmapFilter
+from heatmap_engine import HeatmapEngine
+from pattern_engine import PatternEngine
+from signal_engine import SignalEngine
+from mode_manager import ModeManager
+from collections import deque
 
 class TickEngine:
-    def __init__(self, max_history=1000, window=50):
-        self.history = []
-        self.max_history = max_history
-        self.window = window
+    def __init__(self):
+        self.vol = VolatilityEngine()
+        self.performance = PerformanceTracker()
+        self.pattern = PatternEngine()
+        self.filter = HeatmapFilter()
+        self.signal = SignalEngine()
+        self.mode_manager = ModeManager()
+        self.heatmap = HeatmapEngine()
 
-        # STEP 4: transition matrix
-        self.transitions = defaultdict(list)
-        
-        self.last_signal = None
-        self.signal_threshold = 0.62
-        self.signal_history = []
+        # store ONLY numeric prices
+        self.prices = deque(maxlen=1000)
 
-    # ---------------------------
-    # STEP 2: tick processing
-    # ---------------------------
-    def process_tick(self, tick):
-        price = tick.get("quote")
+    # ----------------------------
+    # MAIN PROCESSOR (LIVE + REPLAY)
+    # ----------------------------
+    def process(self, tick):
+        price = tick["quote"]
 
-        if price is None:
+        self.prices.append(price)
+
+        vol_state = self.vol.update(price)
+        self.pattern.update(price, vol_state)
+
+        if len(self.prices) < 3:
             return None
 
-        digit = int(str(price)[-1])
-        
-        # STEP 4: capture transitions
-        if len(self.history) > 0:
-            prev = self.history[-1]
-            self.transitions[prev].append(digit)
+        # clean numeric pattern (IMPORTANT FIX)
+        pattern = (self.prices[-2], self.prices[-1])
 
-        self.history.append(digit)
+        prob = self.pattern.get_probability(pattern, vol_state)
 
-        if len(self.history) > self.max_history:
-            self.history.pop(0)
+        heatmap_data = self.heatmap.build_heatmap()
+
+        filtered = self.filter.validate(
+            heatmap_data,
+            vol_state,
+            pattern
+        )
+        if filtered and filtered["valid"]:
+
+            signal = {
+                "signal": True,
+                "digit": filtered["digit"],
+                "confidence": filtered["confidence"]
+            }
+
+        else:
+
+            signal = {
+                "signal": False,
+                "digit": None,
+                "confidence": 0
+            }
+            
+        pattern = tuple(self.prices[-2:])
+
+        next_digit = int(str(price)[-1])  # digit extraction (important)
+
+        self.heatmap.update(vol_state, pattern, next_digit)
+        predicted_digit = signal["digit"]
+        actual_digit = int(str(price)[-1])
+
+        self.performance.record(
+            pattern,
+            vol_state,
+            predicted_digit,
+            actual_digit
+        )
 
         return {
             "price": price,
-            "digit": digit
+            "volatility": vol_state,
+            "pattern": pattern,
+            "probability": prob,
+            "signal": signal
         }
         
-    # ---------------------------
-    # STEP 3: CORE INTELLIGENCE
-    # ---------------------------
+    
+    # ----------------------------
+    # REPLAY STEP (IMPORTANT ADDITION)
+    # ----------------------------
+    def step(self):
+        tick = self.mode_manager.next_tick()
 
-    def get_window(self):
-        """Use last N digits for analysis"""
-        return self.history[-self.window:]
-
-    def digit_frequencies(self):
-        """Count occurrence of each digit"""
-        window = self.get_window()
-        counts = Counter(window)
-
-        return {str(i): counts.get(i, 0) for i in range(10)}
-
-    def digit_probabilities(self):
-        """Convert frequencies into probabilities"""
-        window = self.get_window()
-        total = len(window)
-
-        if total == 0:
-            return {str(i): 0 for i in range(10)}
-
-        counts = Counter(window)
-
-        return {
-            str(i): round(counts.get(i, 0) / total, 4)
-            for i in range(10)
-        }
-        
-    def bias_signal(self):
-        """
-        Simple market bias idea:
-        - low digits (0–4)
-        - high digits (5–9)
-        """
-
-        window = self.get_window()
-        if not window:
-            return {"bias": "neutral"}
-
-        low = sum(1 for d in window if d <= 4)
-        high = sum(1 for d in window if d >= 5)
-
-        total = len(window)
-
-        low_pct = low / total
-        high_pct = high / total
-
-        if high_pct > 0.55:
-            bias = "high-digit dominance"
-        elif low_pct > 0.55:
-            bias = "low-digit dominance"
-        else:
-            bias = "balanced"
-
-        return {
-            "bias": bias,
-            "low_pct": round(low_pct, 3),
-            "high_pct": round(high_pct, 3)
-        }
-        
-    def detect_streak(self, min_length=3):
-        """
-        Detect repeating digit streaks like:
-        7,7,7 or 3,3,3,3
-        """
-
-        if len(self.history) < min_length:
+        if tick is None:
             return None
 
-        streak_digit = self.history[-1]
-        streak_len = 1
-
-        for i in range(len(self.history) - 2, -1, -1):
-            if self.history[i] == streak_digit:
-                streak_len += 1
-            else:
-                break
-
-        if streak_len >= min_length:
-            return {
-                "digit": streak_digit,
-                "length": streak_len,
-                "type": "active_streak"
-            }
-
-        return {
-            "type": "no_streak"
-        }
-        
-    def transition_probabilities(self):
-        """
-        Builds a Markov-style probability map:
-        digit -> next digit distribution
-        """
-
-        model = {}
-
-        for digit in range(10):
-            next_digits = self.transitions.get(digit, [])
-
-            if not next_digits:
-                model[str(digit)] = {str(i): 0 for i in range(10)}
-                continue
-
-            counts = Counter(next_digits)
-            total = len(next_digits)
-
-            model[str(digit)] = {
-                str(i): round(counts.get(i, 0) / total, 4)
-                for i in range(10)
-            }
-
-        return model
-    
-    def predict_next_digit(self):
-        """
-        Predict next digit based on:
-        - last digit transitions
-        - fallback to global probabilities
-        """
-
-        if len(self.history) == 0:
-            return None
-
-        last_digit = self.history[-1]
-        transitions = self.transitions.get(last_digit, [])
-
-        # fallback: global behavior
-        if not transitions:
-            freq = Counter(self.get_window())
-            total = sum(freq.values())
-
-            return {
-                "method": "global_fallback",
-                "prediction": max(freq, key=freq.get),
-                "confidence": round(freq[max(freq, key=freq.get)] / total, 3) if total else 0
-            }
-
-        counts = Counter(transitions)
-        total = len(transitions)
-
-        predicted_digit = max(counts, key=counts.get)
-
-        return {
-            "method": "markov_transition",
-            "based_on": last_digit,
-            "prediction": predicted_digit,
-            "confidence": round(counts[predicted_digit] / total, 3)
-        }
-
-    
-    def analytics(self):
-        """Single endpoint for dashboard/API"""
-        return {
-            "window_size": len(self.get_window()),
-            "frequencies": self.digit_frequencies(),
-            "probabilities": self.digit_probabilities(),
-            "bias": self.bias_signal(),
-            "transition_model": self.transition_probabilities(),
-            "prediction": self.predict_next_digit(),
-            "streak": self.detect_streak(),
-            "regime": self.market_regime(),
-            "performance": self.performance_summary()
-        }
-        
-    
-    def generate_signal(self):
-        """
-        Converts analytics into trade decision logic.
-        This is your Over/Under entry engine.
-        """
-
-        analytics = self.analytics()
-
-        probs = analytics["probabilities"]
-        prediction = analytics["prediction"]
-        bias = analytics["bias"]
-
-        # Convert probabilities into usable scores
-        high_digits = sum(probs[str(i)] for i in range(5, 10))
-        low_digits = sum(probs[str(i)] for i in range(0, 5))
-
-        confidence = 0
-        signal = "NO_TRADE"
-
-        # -----------------------------
-        # RULE 1: strong bias filter
-        # -----------------------------
-        if high_digits > 0.58:
-            signal = "OVER"
-            confidence = high_digits
-
-        elif low_digits > 0.58:
-            signal = "UNDER"
-            confidence = low_digits
-
-        # -----------------------------
-        # RULE 2: prediction alignment
-        # -----------------------------
-        predicted_digit = int(prediction.get("prediction")) if prediction else None
-
-        if predicted_digit is not None:
-            if predicted_digit >= 5 and signal == "OVER":
-                confidence += 0.05
-
-            if predicted_digit < 5 and signal == "UNDER":
-                confidence += 0.05
-
-        # -----------------------------
-        # RULE 3: streak suppression
-        # -----------------------------
-        streak = analytics.get("streak", {})
-
-        if streak.get("type") == "active_streak":
-            # avoid chasing long streaks (common trap in synthetic indices)
-            if streak.get("length", 0) >= 4:
-                signal = "NO_TRADE"
-                confidence = 0
-
-        # -----------------------------
-        # RULE 4: final threshold filter
-        # -----------------------------
-        if confidence < 0.62:
-            signal = "NO_TRADE"
-
-        signal_output = {
-            "signal": signal,
-            "confidence": round(confidence, 3),
-            "bias": bias,
-            "prediction": prediction
-        }
-
-        self.last_signal = signal_output
-        return signal_output
-    
-    def update_performance(self):
-        """
-        Simple proxy evaluation:
-        compares last signal vs latest digit movement
-        """
-
-        if len(self.history) < 2 or not self.last_signal:
-            return None
-
-        last_digit = self.history[-1]
-        prev_digit = self.history[-2]
-
-        signal = self.last_signal["signal"]
-
-        outcome = "NO_RESULT"
-
-        # OVER means expect high digits (5-9)
-        if signal == "OVER":
-            outcome = "WIN" if last_digit > prev_digit else "LOSS"
-
-        elif signal == "UNDER":
-            outcome = "WIN" if last_digit < prev_digit else "LOSS"
-
-        self.signal_history.append({
-            "signal": signal,
-            "outcome": outcome
-        })
-
-        return outcome
-    
-    
-    def performance_summary(self):
-        wins = sum(1 for s in self.signal_history if s["outcome"] == "WIN")
-        losses = sum(1 for s in self.signal_history if s["outcome"] == "LOSS")
-
-        total = wins + losses
-
-        return {
-            "total_signals": total,
-            "wins": wins,
-            "losses": losses,
-            "accuracy": round(wins / total, 3) if total > 0 else 0
-        }
-        
-    def market_regime(self):
-        window = self.get_window()
-
-        if len(window) < 10:
-            return {"regime": "insufficient_data"}
-
-        changes = sum(
-            1 for i in range(1, len(window))
-            if window[i] != window[i-1]
-        )
-
-        stability = changes / len(window)
-
-        # Interpretation
-        if stability < 0.45:
-            regime = "trending"
-        elif stability < 0.75:
-            regime = "ranging"
-        else:
-            regime = "chaotic"
-
-        return {
-            "regime": regime,
-            "stability": round(stability, 3)
-        }
+        return self.process(tick)
