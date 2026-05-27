@@ -13,6 +13,23 @@
             padding: 20px;
         }
         
+        h1 {
+            margin-bottom: 20px;
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+        }
+        
+        select {
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 16px;
+            background: #111;
+            color: white;
+            border: 1px solid #333;
+        }
+        
         .grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -38,13 +55,33 @@
             color: #ef4444;
         }
         
-        .neutral {
+        .no_trade {
             color: #facc15;
         }
         
-        table {
-            width: 100%;
-            text-align: center;
+        .bar {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+        }
+        
+        .label {
+            width: 20px;
+        }
+        
+        .track {
+            flex: 1;
+            height: 12px;
+            background: #334155;
+            border-radius: 5px;
+            margin-left: 10px;
+            overflow: hidden;
+        }
+        
+        .fill {
+            height: 100%;
+            background: #38bdf8;
+            width: 0%;
         }
     </style>
 </head>
@@ -53,13 +90,24 @@
 
     <h1>📊 Tick Engine Dashboard</h1>
 
-
+    <!-- MARKET SELECTOR -->
+    <div class="controls">
+        <select id="marketSelect">
+            <option value="R_10">Volatility 10</option>
+            <option value="R_25">Volatility 25</option>
+            <option value="R_50">Volatility 50</option>
+            <option value="R_75">Volatility 75</option>
+            <option value="R_100" selected>Volatility 100</option>
+        </select>
+    </div>
 
     <div class="grid">
 
         <div class="card">
             <h2>Signal</h2>
-            <div id="signal" class="signal neutral">Loading...</div>
+            <div id="signal" class="signal no_trade">
+                Loading...
+            </div>
         </div>
 
         <div class="card">
@@ -77,17 +125,9 @@
             <pre id="freq"></pre>
         </div>
 
-    </div><br>
+    </div>
 
-    <div class="controls">
-        <select id="marketSelect">
-        <option value="R_10">Volatility 10</option>
-        <option value="R_25">Volatility 25</option>
-        <option value="R_50">Volatility 50</option>
-        <option value="R_75">Volatility 75</option>
-        <option value="R_100" selected>Volatility 100</option>
-    </select>
-    </div><br>
+    <br>
 
     <div class="card">
         <h2>Digit Heatmap (0–9 Probability)</h2>
@@ -95,191 +135,97 @@
     </div>
 
     <script>
+        // DEFAULT MARKET
+        let currentMarket = "R_100";
+
+        // DROPDOWN
+        const marketSelect = document.getElementById("marketSelect");
+
+        marketSelect.addEventListener("change", (e) => {
+            currentMarket = e.target.value;
+
+            console.log("Switched market:", currentMarket);
+
+            fetchData();
+        });
+
         async function fetchData() {
-            const res = await fetch("/analytics");
-            const data = await res.json();
 
-            // SIGNAL
-            const signalRes = await fetch("/signal");
-            const signalData = await signalRes.json();
+            try {
 
-            const signalEl = document.getElementById("signal");
-            signalEl.innerText = signalData.signal;
+                // ANALYTICS
+                const res = await fetch(`/analytics/${currentMarket}`);
+                const data = await res.json();
 
-            signalEl.className = "signal " + signalData.signal.toLowerCase();
+                // SIGNAL
+                const signalRes = await fetch(`/signal/${currentMarket}`);
+                const signalData = await signalRes.json();
 
-            // UPDATE UI
-            document.getElementById("bias").innerText =
-                JSON.stringify(data.bias, null, 2);
+                // SIGNAL DISPLAY
+                const signalEl = document.getElementById("signal");
 
-            document.getElementById("prediction").innerText =
-                JSON.stringify(data.prediction, null, 2);
+                signalEl.innerText = signalData.signal;
 
-            document.getElementById("freq").innerText =
-                JSON.stringify(data.frequencies, null, 2);
+                signalEl.className =
+                    "signal " + signalData.signal.toLowerCase();
 
-        }
+                // BIAS
+                document.getElementById("bias").innerText =
+                    JSON.stringify(data.bias, null, 2);
 
-        setInterval(fetchData, 1000);
-        fetchData();
-    </script>
+                // PREDICTION
+                document.getElementById("prediction").innerText =
+                    JSON.stringify(data.prediction, null, 2);
 
-</body>
+                // FREQUENCIES
+                document.getElementById("freq").innerText =
+                    JSON.stringify(data.frequencies, null, 2);
 
-</html>
-<!DOCTYPE html>
-<html>
+                // HEATMAP
+                const heatmap = document.getElementById("heatmap");
 
-<head>
-    <title>Tick Engine Dashboard</title>
+                heatmap.innerHTML = "";
 
-    <style>
-        body {
-            font-family: Arial;
-            background: #0f172a;
-            color: white;
-            margin: 0;
-            padding: 20px;
-        }
-        
-        .bar {
-            display: flex;
-            align-items: center;
-            margin: 5px 0;
-        }
-        
-        .label {
-            width: 20px;
-        }
-        
-        .controls {
-            margin-bottom: 20px;
-        }
-        
-        select {
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 16px;
-            background: #111;
-            color: white;
-            border: 1px solid #333;
-        }
-        
-        .track {
-            flex: 1;
-            height: 10px;
-            background: #334155;
-            border-radius: 5px;
-            margin-left: 10px;
-        }
-        
-        .fill {
-            height: 100%;
-            background: #38bdf8;
-            width: 0%;
-        }
-        
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-        }
-        
-        .card {
-            background: #1e293b;
-            padding: 20px;
-            border-radius: 10px;
-        }
-        
-        .signal {
-            font-size: 28px;
-            font-weight: bold;
-        }
-        
-        .over {
-            color: #22c55e;
-        }
-        
-        .under {
-            color: #ef4444;
-        }
-        
-        .neutral {
-            color: #facc15;
-        }
-        
-        table {
-            width: 100%;
-            text-align: center;
-        }
-    </style>
-</head>
+                const probs = data.probabilities;
 
-<body>
+                for (let i = 0; i < 10; i++) {
 
+                    const value = probs[i] || 0;
 
+                    const percent = (value * 100).toFixed(1);
 
-    <script>
-        async function fetchData() {
-            const res = await fetch("/analytics${currentMarket}");
-            const data = await res.json();
+                    const row = document.createElement("div");
 
-            const signalRes = await fetch("/signal${currentMarket}");
-            const signalData = await signalRes.json();
+                    row.className = "bar";
 
-            // -----------------------
-            // SIGNAL DISPLAY
-            // -----------------------
-            const signalEl = document.getElementById("signal");
-            signalEl.innerText = signalData.signal;
-            signalEl.className = "signal " + signalData.signal.toLowerCase();
+                    row.innerHTML = `
+                        <div class="label">${i}</div>
 
-            document.getElementById("bias").innerText =
-                JSON.stringify(data.bias, null, 2);
+                        <div class="track">
+                            <div class="fill"
+                                style="width:${percent}%">
+                            </div>
+                        </div>
 
-            document.getElementById("prediction").innerText =
-                JSON.stringify(data.prediction, null, 2);
+                        <div style="margin-left:10px">
+                            ${percent}%
+                        </div>
+                    `;
 
-            document.getElementById("freq").innerText =
-                JSON.stringify(data.frequencies, null, 2);
+                    heatmap.appendChild(row);
+                }
 
-            let currentMarket = "R_100";
-            const marketSelect = document.getElementById("marketSelect");
+            } catch (err) {
 
-            marketSelect.addEventListener("change", (e) => {
-                currentMarket = e.target.value;
+                console.error(err);
 
-                console.log("Switched market:", currentMarket);
-            });
-
-            // -----------------------
-            // HEATMAP RENDER
-            // -----------------------
-            const heatmap = document.getElementById("heatmap");
-            heatmap.innerHTML = "";
-
-            const probs = data.probabilities;
-
-            for (let i = 0; i < 10; i++) {
-                const value = probs[i] || 0;
-                const percent = (value * 100).toFixed(1);
-
-                const row = document.createElement("div");
-                row.className = "bar";
-
-                row.innerHTML = `
-            <div class="label">${i}</div>
-            <div class="track">
-                <div class="fill" style="width:${percent}%"></div>
-            </div>
-            <div style="margin-left:10px">${percent}%</div>
-        `;
-
-                heatmap.appendChild(row);
             }
         }
 
+        // AUTO REFRESH
         setInterval(fetchData, 1000);
+
+        // INITIAL LOAD
         fetchData();
     </script>
 
