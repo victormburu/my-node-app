@@ -2,34 +2,45 @@ import asyncio
 import json
 import websockets
 
-DERIV_URL = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
+DERIV_WS = "wss://ws.derivws.com/websockets/v3?app_id=1089"
 
-class DerivStream:
-    def __init__(self, engine, symbol="R_100"):
-        self.engine = engine
-        self.symbol = symbol
+# Supported markets
+MARKETS = {
+    "R_10": "R_10",
+    "R_25": "R_25",
+    "R_50": "R_50",
+    "R_75": "R_75",
+    "R_100": "R_100"
+}
+async def stream_deriv_ticks(engines):
+    while True:
+        try:
+            async with websockets.connect(DERIV_WS) as websocket:
 
-    async def connect(self):
-        while True:
-            try:
-                async with websockets.connect(DERIV_URL) as ws:
-
-                    # subscribe to ticks
-                    await ws.send(json.dumps({
-                        "ticks": self.symbol,
+                # subscribe all markets
+                for symbol in MARKETS.values():
+                    await websocket.send(json.dumps({
+                        "ticks": symbol,
                         "subscribe": 1
                     }))
 
-                    print("Connected to Deriv stream...")
+                print("Deriv multi-market stream started")
+                
+                while True:
+                    response = await websocket.recv()
+                    data = json.loads(response)
 
-                    while True:
-                        msg = await ws.recv()
-                        data = json.loads(msg)
+                    if "tick" in data:
+                        tick = data["tick"]
 
-                        if "tick" in data:
-                            self.engine.process_tick(data["tick"])
+                        symbol = tick.get("symbol")
+                        quote = tick.get("quote")
 
-            except Exception as e:
-                print("WebSocket error:", e)
-                print("Reconnecting in 3 seconds...")
-                await asyncio.sleep(3)
+                        if symbol in engines:
+                            engines[symbol].process_tick({
+                                "quote": quote
+                            })
+
+        except Exception as e:
+            print("WebSocket Error:", e)
+            await asyncio.sleep(5)

@@ -77,7 +77,17 @@
             <pre id="freq"></pre>
         </div>
 
-    </div>
+    </div><br>
+
+    <div class="controls">
+        <select id="marketSelect">
+        <option value="R_10">Volatility 10</option>
+        <option value="R_25">Volatility 25</option>
+        <option value="R_50">Volatility 50</option>
+        <option value="R_75">Volatility 75</option>
+        <option value="R_100" selected>Volatility 100</option>
+    </select>
+    </div><br>
 
     <div class="card">
         <h2>Digit Heatmap (0–9 Probability)</h2>
@@ -142,6 +152,19 @@
             width: 20px;
         }
         
+        .controls {
+            margin-bottom: 20px;
+        }
+        
+        select {
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 16px;
+            background: #111;
+            color: white;
+            border: 1px solid #333;
+        }
+        
         .track {
             flex: 1;
             height: 10px;
@@ -194,38 +217,14 @@
 
 <body>
 
-    <h1>📊 Tick Engine Dashboard</h1>
 
-    <div class="grid">
-
-        <div class="card">
-            <h2>Signal</h2>
-            <div id="signal" class="signal neutral">Loading...</div>
-        </div>
-
-        <div class="card">
-            <h2>Bias</h2>
-            <pre id="bias"></pre>
-        </div>
-
-        <div class="card">
-            <h2>Prediction</h2>
-            <pre id="prediction"></pre>
-        </div>
-
-        <div class="card">
-            <h2>Digit Frequencies</h2>
-            <pre id="freq"></pre>
-        </div>
-
-    </div>
 
     <script>
         async function fetchData() {
-            const res = await fetch("/analytics");
+            const res = await fetch("/analytics${currentMarket}");
             const data = await res.json();
 
-            const signalRes = await fetch("/signal");
+            const signalRes = await fetch("/signal${currentMarket}");
             const signalData = await signalRes.json();
 
             // -----------------------
@@ -243,6 +242,15 @@
 
             document.getElementById("freq").innerText =
                 JSON.stringify(data.frequencies, null, 2);
+
+            let currentMarket = "R_100";
+            const marketSelect = document.getElementById("marketSelect");
+
+            marketSelect.addEventListener("change", (e) => {
+                currentMarket = e.target.value;
+
+                console.log("Switched market:", currentMarket);
+            });
 
             // -----------------------
             // HEATMAP RENDER
