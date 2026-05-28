@@ -4,7 +4,6 @@ import websockets
 
 DERIV_WS = "wss://ws.derivws.com/websockets/v3?app_id=1089"
 
-# Supported markets
 MARKETS = {
     "R_10": "R_10",
     "R_25": "R_25",
@@ -12,34 +11,47 @@ MARKETS = {
     "R_75": "R_75",
     "R_100": "R_100"
 }
+
+
 async def stream_deriv_ticks(engines):
+
     while True:
         try:
             async with websockets.connect(DERIV_WS) as websocket:
 
-                # subscribe all markets
+                print("Deriv multi-market stream started")
+
+                # STEP 1: subscribe correctly
                 for symbol in MARKETS.values():
+
                     await websocket.send(json.dumps({
                         "ticks": symbol,
                         "subscribe": 1
                     }))
 
-                print("Deriv multi-market stream started")
-                
+                # STEP 2: listen loop
                 while True:
                     response = await websocket.recv()
                     data = json.loads(response)
 
-                    if "tick" in data:
-                        tick = data["tick"]
+                    # safety check
+                    if "tick" not in data:
+                        continue
 
-                        symbol = tick.get("symbol")
-                        quote = tick.get("quote")
+                    tick = data["tick"]
 
-                        if symbol in engines:
-                            engines[symbol].process({
-                                "quote": quote
-                            })
+                    symbol = tick.get("symbol")
+                    quote = tick.get("quote")
+
+                    if not symbol or quote is None:
+                        continue
+
+                    if symbol in engines:
+
+                        engines[symbol].process({
+                            "quote": float(quote),
+                            "symbol": symbol
+                        })
 
         except Exception as e:
             print("WebSocket Error:", e)
