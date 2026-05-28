@@ -84,7 +84,6 @@ async def stream(websocket: WebSocket, symbol: str):
         signal = engine.generate_signal()
 
         await websocket.send_json({
-            "symbol": symbol,
             "analytics": data,
             "signal": signal
         })
