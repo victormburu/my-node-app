@@ -1,9 +1,7 @@
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import FileResponse
 import asyncio
-
-from pydantic import BaseModel
-from typing import List, Dict, Any
+from fastapi import Body
 from tick_engine import TickEngine
 from ws_client import stream_deriv_ticks
 
@@ -100,41 +98,25 @@ def dashboard():
     return FileResponse("static/index.html")
 
 @app.post("/replay/load/{symbol}")
-def load_replay(symbol: str, ticks: list):
+async def load_replay(
+    symbol: str,
+    payload: dict = Body(...)
+):
 
     engine = ENGINES.get(symbol)
 
     if not engine:
         return {"error": "invalid symbol"}
 
-    engine.mode_manager.set_replay(ticks)
+    ticks = payload.get("ticks", [])
 
-    return {"status": "replay loaded"}
-
-
-class ReplayRequest(BaseModel):
-    ticks: List[Dict[str, Any]]
-@app.post("/replay/load/{symbol}")
-def load_replay(symbol: str, payload: ReplayRequest):
-
-    engine = ENGINES.get(symbol)
-
-    if not engine:
-        return {"error": "invalid symbol"}
-
-    tick = engine.mode_manager.next_tick()
-
-    if not tick:
-        return {"done": True}
-
-    output = engine.process_tick(tick)
+    engine.set_replay(ticks)
 
     return {
-        "tick": tick,
-        "output": output,
-        "mode": "replay"
+        "status": "replay loaded",
+        "count": len(ticks)
     }
-    
+
 @app.get("/heatmap/{symbol}")
 def get_heatmap(symbol: str):
 
