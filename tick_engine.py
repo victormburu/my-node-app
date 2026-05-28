@@ -85,7 +85,16 @@ class TickEngine:
             "signal": signal
         }
         
-    
+    def analytics(self):
+        return {
+            "ticks_processed": len(self.prices),
+            "latest_price": self.prices[-1] if self.prices else None
+        }
+
+    def generate_signal(self):
+        return {
+            "status": "running"
+        }
     # ----------------------------
     # REPLAY STEP (IMPORTANT ADDITION)
     # ----------------------------

@@ -37,7 +37,7 @@ async def stream_deriv_ticks(engines):
                         quote = tick.get("quote")
 
                         if symbol in engines:
-                            engines[symbol].process_tick({
+                            engines[symbol].process({
                                 "quote": quote
                             })
 
