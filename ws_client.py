@@ -14,6 +14,7 @@ async def stream_deriv_ticks(engines):
             async with websockets.connect(DERIV_WS) as websocket:
 
                 print("Deriv multi-market stream started")
+                print("Connecting to Deriv WS...")
 
                 # =========================
                 # SUBSCRIBE MARKETS SAFELY
@@ -66,5 +67,5 @@ async def stream_deriv_ticks(engines):
                         continue
 
         except Exception as e:
-            print("WebSocket Error:", e)
+            print("❌ WebSocket crash:", repr(e))
             await asyncio.sleep(5)

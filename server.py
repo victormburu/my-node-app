@@ -93,7 +93,17 @@ async def stream(websocket: WebSocket, symbol: str):
         
 @app.on_event("startup")
 async def startup_event():
-    asyncio.create_task(stream_deriv_ticks(ENGINES))
+    print("🚀 Booting system...")
+
+    async def runner():
+        while True:
+            try:
+                await stream_deriv_ticks(ENGINES)
+            except Exception as e:
+                print("🔁 Restarting stream due to:", e)
+                await asyncio.sleep(3)
+
+    asyncio.create_task(runner())
     
 @app.get("/dashboard")
 def dashboard():
@@ -138,3 +148,4 @@ def performance(symbol: str):
         return {"error": "invalid symbol"}
 
     return engine.performance.report()
+
