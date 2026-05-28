@@ -143,18 +143,25 @@
 
     <script>
         // DEFAULT MARKET
-        let currentMarket = "R_100";
+        const symbol = document.getElementById("marketSelect").value;
 
-        // DROPDOWN
-        const marketSelect = document.getElementById("marketSelect");
+        let ws;
 
-        marketSelect.addEventListener("change", (e) => {
-            currentMarket = e.target.value;
+        function connectWS(symbol) {
 
-            console.log("Switched market:", currentMarket);
+            if (ws) ws.close();
 
-            fetchData();
-        });
+            ws = new WebSocket(
+                `wss://deriv-analysis.onrender.com/stream/${symbol}`
+            );
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                renderDashboard(data);
+            };
+        }
+
+        connectWS(symbol);
 
         function setLive() {
             fetch("/mode/live", {
@@ -170,6 +177,11 @@
             document.getElementById("performance").innerHTML =
                 JSON.stringify(data, null, 2);
         }
+
+        document.getElementById("marketSelect")
+            .addEventListener("change", (e) => {
+                connectWS(e.target.value);
+            });
 
         async function loadReplay() {
             const res = await fetch("/replay/load/R_25", {
@@ -247,7 +259,38 @@
 
         setInterval(() => {
             loadHeatmap("R_25");
-        }, 3000);
+        }, 5000);
+
+        function renderDashboard(data) {
+
+            const analytics = data.analytics || {};
+            const signal = data.signal || {};
+
+            // SIGNAL
+            const signalEl = document.getElementById("signal");
+
+            if (signal.signal) {
+                signalEl.innerText =
+                    `DIGIT ${signal.digit || "-"}`;
+
+                signalEl.className = "signal over";
+            } else {
+                signalEl.innerText = "NO TRADE";
+                signalEl.className = "signal no_trade";
+            }
+
+            // BIAS (volatility)
+            document.getElementById("bias").innerText =
+                analytics.volatility || "waiting...";
+
+            // PREDICTION
+            document.getElementById("prediction").innerText =
+                signal.digit ? ? "-";
+
+            // FREQUENCY (TEMP FIX)
+            document.getElementById("freq").innerText =
+                JSON.stringify(analytics.pattern || {}, null, 2);
+        }
 
         async function fetchData() {
 

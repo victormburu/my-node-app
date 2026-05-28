@@ -15,6 +15,7 @@ class TickEngine:
         self.filter = HeatmapFilter()
         self.signal = SignalEngine()
         self.mode_manager = ModeManager()
+        self.latest_output = {}
         self.heatmap = HeatmapEngine()
 
         # store ONLY numeric prices
@@ -77,19 +78,26 @@ class TickEngine:
             actual_digit
         )
 
-        return {
+        output = {
             "price": price,
             "volatility": vol_state,
             "pattern": pattern,
             "probability": prob,
             "signal": signal
         }
+
+        self.latest_output = output
+
+        return output
         
     def analytics(self):
-        return {
-            "ticks_processed": len(self.prices),
-            "latest_price": self.prices[-1] if self.prices else None
-        }
+
+        if not self.latest_output:
+            return {
+                "status": "waiting_for_ticks"
+            }
+
+        return self.latest_output
 
     def generate_signal(self):
         return {
