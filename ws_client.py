@@ -4,68 +4,93 @@ import websockets
 
 DERIV_WS = "wss://ws.derivws.com/websockets/v3?app_id=1089"
 
-MARKETS = ["R_10", "R_25", "R_50", "R_75", "R_100"]
-
+MARKETS = [
+    "R_10",
+    "R_25",
+    "R_50",
+    "R_75",
+    "R_100"
+]
 
 async def stream_deriv_ticks(engines):
 
     while True:
+
         try:
+            print("Connecting to Deriv WS...")
+
             async with websockets.connect(DERIV_WS) as websocket:
 
-                print("Deriv multi-market stream started")
-                print("Connecting to Deriv WS...")
+                # -----------------------------------
+                # SUBSCRIBE TO ALL MARKETS
+                # -----------------------------------
+                for symbol in MARKETS:
 
-                # =========================
-                # SUBSCRIBE MARKETS SAFELY
-                # =========================
-                for i, symbol in enumerate(MARKETS):
-
-                    await websocket.send(json.dumps({
+                    payload = {
                         "ticks": symbol,
-                        "subscribe": 1,
-                        "req_id": i + 1
-                    }))
+                        "subscribe": 1
+                    }
 
-                # =========================
-                # MAIN LISTENER LOOP
-                # =========================
+                    await websocket.send(json.dumps(payload))
+
+                    print(f"Subscribed -> {symbol}")
+
+                print("Deriv multi-market stream started")
+
+                # -----------------------------------
+                # RECEIVE LOOP
+                # -----------------------------------
                 while True:
+
                     response = await websocket.recv()
 
-                    try:
-                        data = json.loads(response)
-                    except:
+                    data = json.loads(response)
+
+                    # DEBUG
+                    print("RAW:", data)
+
+                    # -----------------------------------
+                    # ENSURE TICK MESSAGE
+                    # -----------------------------------
+                    if data.get("msg_type") != "tick":
                         continue
 
-                    # only process tick messages
-                    if "tick" not in data:
-                        continue
+                    tick = data.get("tick")
 
-                    tick = data["tick"]
+                    if not tick:
+                        continue
 
                     symbol = tick.get("symbol")
                     quote = tick.get("quote")
 
-                    # safety guard
-                    if symbol not in engines:
+                    if symbol is None or quote is None:
                         continue
 
-                    if quote is None:
+                    print(f"TICK -> {symbol} : {quote}")
+
+                    # -----------------------------------
+                    # ENGINE PROCESSING
+                    # -----------------------------------
+                    engine = engines.get(symbol)
+
+                    if not engine:
+                        print(f"No engine found for {symbol}")
                         continue
 
                     try:
-                        price = float(quote)
 
-                        engines[symbol].process({
-                            "quote": price,
+                        output = engine.process({
+                            "quote": float(quote),
                             "symbol": symbol
                         })
 
+                        print("Processed:", output)
+
                     except Exception as e:
-                        print("Tick processing error:", e)
-                        continue
+                        print("Tick processing error:", str(e))
 
         except Exception as e:
-            print("❌ WebSocket crash:", repr(e))
+
+            print("WebSocket Error:", str(e))
+
             await asyncio.sleep(5)
