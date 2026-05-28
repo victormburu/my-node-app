@@ -4,13 +4,7 @@ import websockets
 
 DERIV_WS = "wss://ws.derivws.com/websockets/v3?app_id=1089"
 
-MARKETS = {
-    "R_10": "R_10",
-    "R_25": "R_25",
-    "R_50": "R_50",
-    "R_75": "R_75",
-    "R_100": "R_100"
-}
+MARKETS = ["R_10", "R_25", "R_50", "R_75", "R_100"]
 
 
 async def stream_deriv_ticks(engines):
@@ -21,20 +15,29 @@ async def stream_deriv_ticks(engines):
 
                 print("Deriv multi-market stream started")
 
-                # STEP 1: subscribe correctly
-                for symbol in MARKETS.values():
+                # =========================
+                # SUBSCRIBE MARKETS SAFELY
+                # =========================
+                for i, symbol in enumerate(MARKETS):
 
                     await websocket.send(json.dumps({
                         "ticks": symbol,
-                        "subscribe": 1
+                        "subscribe": 1,
+                        "req_id": i + 1
                     }))
 
-                # STEP 2: listen loop
+                # =========================
+                # MAIN LISTENER LOOP
+                # =========================
                 while True:
                     response = await websocket.recv()
-                    data = json.loads(response)
 
-                    # safety check
+                    try:
+                        data = json.loads(response)
+                    except:
+                        continue
+
+                    # only process tick messages
                     if "tick" not in data:
                         continue
 
@@ -43,15 +46,24 @@ async def stream_deriv_ticks(engines):
                     symbol = tick.get("symbol")
                     quote = tick.get("quote")
 
-                    if not symbol or quote is None:
+                    # safety guard
+                    if symbol not in engines:
                         continue
 
-                    if symbol in engines:
+                    if quote is None:
+                        continue
+
+                    try:
+                        price = float(quote)
 
                         engines[symbol].process({
-                            "quote": float(quote),
+                            "quote": price,
                             "symbol": symbol
                         })
+
+                    except Exception as e:
+                        print("Tick processing error:", e)
+                        continue
 
         except Exception as e:
             print("WebSocket Error:", e)

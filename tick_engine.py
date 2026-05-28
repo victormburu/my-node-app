@@ -26,67 +26,82 @@ class TickEngine:
     # MAIN PROCESSOR (LIVE + REPLAY)
     # ----------------------------
     def process(self, tick):
-        price = tick["quote"]
 
+        price = float(tick["quote"])
         self.prices.append(price)
-
-        vol_state = self.vol.update(price)
-        self.pattern.update(price, vol_state)
 
         if len(self.prices) < 3:
             return None
 
-        # clean numeric pattern (IMPORTANT FIX)
-        pattern = (self.prices[-2], self.prices[-1])
+        # =========================
+        # VOLATILITY
+        # =========================
+        vol_state = self.vol.update(price)
 
-        prob = self.pattern.get_probability(pattern, vol_state)
+        # =========================
+        # PATTERN (CONSISTENT)
+        # =========================
+        pattern = (self.prices[-3], self.prices[-2], self.prices[-1])
+
+        self.pattern.update(price, vol_state)
+
+        prob = self.pattern.get_probability(
+            (self.prices[-2], self.prices[-1]),
+            vol_state
+        )
+
+        # =========================
+        # HEATMAP FIRST (IMPORTANT FIX)
+        # =========================
+        next_digit = int(str(price)[-1])
+
+        self.heatmap.update(
+            vol_state,
+            (self.prices[-2], self.prices[-1]),
+            next_digit
+        )
 
         heatmap_data = self.heatmap.build_heatmap()
 
         filtered = self.filter.validate(
             heatmap_data,
             vol_state,
-            pattern
+            (self.prices[-2], self.prices[-1])
         )
-        if filtered and filtered["valid"]:
 
+        # =========================
+        # SIGNAL GENERATION
+        # =========================
+        if filtered and filtered["valid"]:
             signal = {
                 "signal": True,
                 "digit": filtered["digit"],
                 "confidence": filtered["confidence"]
             }
-
         else:
-
             signal = {
                 "signal": False,
                 "digit": None,
                 "confidence": 0
             }
-            
-        pattern = tuple(self.prices[-2:])
 
-        next_digit = int(str(price)[-1])  # digit extraction (important)
-
-        self.heatmap.update(vol_state, pattern, next_digit)
+        # =========================
+        # PERFORMANCE TRACKING (SAFE)
+        # =========================
         predicted_digit = signal["digit"]
-        actual_digit = int(str(price)[-1])
+        actual_digit = next_digit
 
-        self.performance.record(
-            pattern,
-            vol_state,
-            predicted_digit,
-            actual_digit
-        )
-        
-        self.latest = {
-            "quote": tick["quote"],
-            "volatility": vol_state,
-            "pattern": pattern,
-            "probability": prob,
-            "signal": signal
-        }
+        if predicted_digit is not None:
+            self.performance.record(
+                pattern,
+                vol_state,
+                predicted_digit,
+                actual_digit
+            )
 
+        # =========================
+        # STORE STATE
+        # =========================
         output = {
             "price": price,
             "volatility": vol_state,
@@ -96,6 +111,7 @@ class TickEngine:
         }
 
         self.latest_output = output
+        self.latest = output
 
         return output
         
