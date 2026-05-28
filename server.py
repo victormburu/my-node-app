@@ -2,6 +2,8 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import FileResponse
 import asyncio
 
+from pydantic import BaseModel
+from typing import List, Dict, Any
 from tick_engine import TickEngine
 from ws_client import stream_deriv_ticks
 
@@ -109,8 +111,11 @@ def load_replay(symbol: str, ticks: list):
 
     return {"status": "replay loaded"}
 
-@app.get("/replay/step/{symbol}")
-def replay_step(symbol: str):
+
+class ReplayRequest(BaseModel):
+    ticks: List[Dict[str, Any]]
+@app.post("/replay/load/{symbol}")
+def load_replay(symbol: str, payload: ReplayRequest):
 
     engine = ENGINES.get(symbol)
 
