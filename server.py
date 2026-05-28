@@ -53,7 +53,9 @@ def analytics(symbol: str):
     if not engine:
         return {"error": "invalid symbol"}
 
-    return engine.analytics()
+    return engine.latest or {
+        "status": "waiting"
+    }
 
 @app.get("/signal/{symbol}")
 def signal(symbol: str):
@@ -61,9 +63,10 @@ def signal(symbol: str):
     engine = ENGINES.get(symbol)
 
     if not engine:
-        return {"error": "invalid symbol"}
+        return {"signal": False,
+                "status": "no_data"}
 
-    return engine.generate_signal()
+    return engine.latest["signal"]
 
 @app.websocket("/stream/{symbol}")
 async def stream(websocket: WebSocket, symbol: str):

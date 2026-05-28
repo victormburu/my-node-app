@@ -16,6 +16,7 @@ class TickEngine:
         self.signal = SignalEngine()
         self.mode_manager = ModeManager()
         self.latest_output = {}
+        self.latest = None
         self.heatmap = HeatmapEngine()
 
         # store ONLY numeric prices
@@ -77,6 +78,14 @@ class TickEngine:
             predicted_digit,
             actual_digit
         )
+        
+        self.latest = {
+            "quote": tick["quote"],
+            "volatility": vol_state,
+            "pattern": pattern,
+            "probability": prob,
+            "signal": signal
+        }
 
         output = {
             "price": price,

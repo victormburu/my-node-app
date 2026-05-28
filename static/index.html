@@ -266,18 +266,8 @@
             const analytics = data.analytics || {};
             const signal = data.signal || {};
 
-            // SIGNAL
-            const signalEl = document.getElementById("signal");
-
-            if (signal.signal) {
-                signalEl.innerText =
-                    `DIGIT ${signal.digit || "-"}`;
-
-                signalEl.className = "signal over";
-            } else {
-                signalEl.innerText = "NO TRADE";
-                signalEl.className = "signal no_trade";
-            }
+            document.getElementById("signal").innerText =
+                signal.signal ? `DIGIT ${signal.digit}` : "NO TRADE";
 
             // BIAS (volatility)
             document.getElementById("bias").innerText =
@@ -286,10 +276,6 @@
             // PREDICTION
             document.getElementById("prediction").innerText =
                 signal.digit ? ? "-";
-
-            // FREQUENCY (TEMP FIX)
-            document.getElementById("freq").innerText =
-                JSON.stringify(analytics.pattern || {}, null, 2);
         }
 
         async function fetchData() {
