@@ -9,11 +9,22 @@ class EntryScoring:
             }
 
         confidence = signal.get("confidence", 0)
+        
+        # SAFE TYPE GUARD
+        if isinstance(confidence, dict):
+            confidence = confidence.get("value", 0)
+
+        try:
+            confidence = float(confidence)
+        except:
+            confidence = 0
 
         # -------------------------
         # FIXED HEATMAP FLATTENING
         # -------------------------
-        max_prob = 0
+        if isinstance(max_prob, dict):
+            max_prob = 0
+            
         if heatmap:
             flat = [
                 prob
