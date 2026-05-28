@@ -12,18 +12,20 @@ MARKETS = [
     "R_100"
 ]
 
+
 async def stream_deriv_ticks(engines):
 
     while True:
 
         try:
+
             print("Connecting to Deriv WS...")
 
             async with websockets.connect(DERIV_WS) as websocket:
 
-                # -----------------------------------
-                # SUBSCRIBE TO ALL MARKETS
-                # -----------------------------------
+                print("Deriv multi-market stream started")
+
+                # subscribe
                 for symbol in MARKETS:
 
                     payload = {
@@ -35,11 +37,7 @@ async def stream_deriv_ticks(engines):
 
                     print(f"Subscribed -> {symbol}")
 
-                print("Deriv multi-market stream started")
-
-                # -----------------------------------
-                # RECEIVE LOOP
-                # -----------------------------------
+                # receive loop
                 while True:
 
                     response = await websocket.recv()
@@ -49,48 +47,39 @@ async def stream_deriv_ticks(engines):
                     # DEBUG
                     print("RAW:", data)
 
-                    # -----------------------------------
-                    # ENSURE TICK MESSAGE
-                    # -----------------------------------
-                    if data.get("msg_type") != "tick":
+                    if "tick" not in data:
                         continue
 
-                    tick = data.get("tick")
-
-                    if not tick:
-                        continue
+                    tick = data["tick"]
 
                     symbol = tick.get("symbol")
                     quote = tick.get("quote")
 
-                    if symbol is None or quote is None:
+                    if not symbol:
+                        continue
+
+                    if quote is None:
                         continue
 
                     print(f"TICK -> {symbol} : {quote}")
 
-                    # -----------------------------------
-                    # ENGINE PROCESSING
-                    # -----------------------------------
-                    engine = engines.get(symbol)
+                    if symbol in engines:
 
-                    if not engine:
-                        print(f"No engine found for {symbol}")
-                        continue
+                        try:
 
-                    try:
+                            result = engines[symbol].process({
+                                "quote": float(quote),
+                                "symbol": symbol
+                            })
 
-                        output = engine.process({
-                            "quote": float(quote),
-                            "symbol": symbol
-                        })
+                            print("ENGINE OUTPUT:", result)
 
-                        print("Processed:", output)
+                        except Exception as e:
 
-                    except Exception as e:
-                        print("Tick processing error:", str(e))
+                            print("Tick processing error:", e)
 
         except Exception as e:
 
-            print("WebSocket Error:", str(e))
+            print("WebSocket Error:", e)
 
             await asyncio.sleep(5)

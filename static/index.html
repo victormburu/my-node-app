@@ -165,7 +165,6 @@
 
         function connectWS(symbol) {
 
-            if (ws) ws.close();
 
             ws = new WebSocket(
                 `wss://deriv-analysis.onrender.com/stream/${symbol}`
@@ -173,12 +172,47 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                renderSignal(data.signal);
-                renderAnalytics(data.analytics);
+                console.log(data);
+                renderDashboard(data)
             };
         }
 
         connectWS(symbol);
+
+        function renderDashboard(data) {
+
+            if (!data) return;
+
+            // SIGNAL
+            const signalEl = document.getElementById("signal");
+
+            if (data.signal?.signal) {
+
+                signalEl.innerText =
+                    `DIGIT ${data.signal.digit}`;
+
+                signalEl.className = "signal over";
+
+            } else {
+
+                signalEl.innerText = "NO TRADE";
+
+                signalEl.className = "signal no_trade";
+            }
+
+            // BIAS
+            document.getElementById("bias").innerText =
+                JSON.stringify(data.volatility, null, 2);
+
+            // PREDICTION
+            document.getElementById("prediction").innerText =
+                JSON.stringify(data.signal, null, 2);
+
+            // FREQUENCIES
+            document.getElementById("freq").innerText =
+                JSON.stringify(data.pattern, null, 2);
+        }
+
 
         function renderTiming(timing) {
 

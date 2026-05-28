@@ -9,52 +9,36 @@ class EntryScoring:
             }
 
         confidence = signal.get("confidence", 0)
-        
-        # SAFE TYPE GUARD
-        if isinstance(confidence, dict):
-            confidence = confidence.get("value", 0)
 
-        try:
-            confidence = float(confidence)
-        except:
-            confidence = 0
+        max_prob = 0
 
-        # -------------------------
-        # FIXED HEATMAP FLATTENING
-        # -------------------------
-        if isinstance(max_prob, dict):
-            max_prob = 0
-            
-        if heatmap:
-            flat = [
-                prob
-                for pattern in heatmap.values()
-                for prob in pattern.values()
-            ]
-            if flat:
-                max_prob = max(flat)
+        # FIXED
+        if isinstance(heatmap, dict):
 
-        # -------------------------
-        # VOLATILITY WEIGHTING
-        # -------------------------
+            values = []
+
+            for value in heatmap.values():
+
+                if isinstance(value, (int, float)):
+                    values.append(value)
+
+            if values:
+                max_prob = max(values)
+
         vol_weight = {
             "low": 1.2,
             "mid": 1.0,
             "high": 0.8
         }.get(volatility, 1.0)
 
-        # -------------------------
-        # STABLE SCORE (0–100)
-        # -------------------------
-        score = (confidence * 0.7 + max_prob * 0.3) * 100 * vol_weight
+        score = ((confidence * 70) + (max_prob * 30)) * vol_weight
 
-        # -------------------------
-        # QUALITY LABEL
-        # -------------------------
         if score >= 75:
             quality = "HIGH"
+
         elif score >= 45:
             quality = "MEDIUM"
+
         else:
             quality = "LOW"
 
