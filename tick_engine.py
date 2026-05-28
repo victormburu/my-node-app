@@ -1,8 +1,10 @@
 from volatility_engine import VolatilityEngine
 from performance_tracker import PerformanceTracker
+from entry_timing import EntryTimingModel
 from heatmap_filter import HeatmapFilter
 from heatmap_engine import HeatmapEngine
 from pattern_engine import PatternEngine
+from entry_scoring import EntryScoring
 from signal_engine import SignalEngine
 from mode_manager import ModeManager
 from collections import deque
@@ -10,9 +12,11 @@ from collections import deque
 class TickEngine:
     def __init__(self):
         self.vol = VolatilityEngine()
+        self.timing = EntryTimingModel()
         self.performance = PerformanceTracker()
         self.pattern = PatternEngine()
         self.filter = HeatmapFilter()
+        self.scorer = EntryScoring()
         self.signal = SignalEngine()
         self.mode_manager = ModeManager()
         self.latest_output = {}
@@ -49,7 +53,7 @@ class TickEngine:
             (self.prices[-2], self.prices[-1]),
             vol_state
         )
-
+        
         # =========================
         # HEATMAP FIRST (IMPORTANT FIX)
         # =========================
@@ -62,17 +66,18 @@ class TickEngine:
         )
 
         heatmap_data = self.heatmap.build_heatmap()
+        
 
         filtered = self.filter.validate(
             heatmap_data,
             vol_state,
             (self.prices[-2], self.prices[-1])
         )
-
+        
         # =========================
         # SIGNAL GENERATION
         # =========================
-        if filtered and filtered["valid"]:
+        if filtered and filtered["valid"] and entry["score"] >=45:
             signal = {
                 "signal": True,
                 "digit": filtered["digit"],
@@ -84,7 +89,7 @@ class TickEngine:
                 "digit": None,
                 "confidence": 0
             }
-
+        entry = self.scorer.score(signal, heatmap_data, vol_state)
         # =========================
         # PERFORMANCE TRACKING (SAFE)
         # =========================
@@ -98,7 +103,9 @@ class TickEngine:
                 predicted_digit,
                 actual_digit
             )
-
+        
+        self.timing.update(entry["score"])
+        timing = self.timing.estimate_delay()
         # =========================
         # STORE STATE
         # =========================
@@ -107,7 +114,9 @@ class TickEngine:
             "volatility": vol_state,
             "pattern": pattern,
             "probability": prob,
-            "signal": signal
+            "signal": signal,
+            "entry": entry,
+            "timing": timing
         }
 
         self.latest_output = output

@@ -104,6 +104,22 @@
     <button onclick="setLive()">Live Mode</button>
     <button onclick="loadReplay()">Replay Mode</button>
 
+    <div class="card">
+        <h2>Entry Strength</h2>
+        <div id="entryScore" class="signal"></div>
+        <div id="entryBar" style="height:10px;background:#334155;border-radius:5px;">
+            <div id="entryFill" style="height:100%;width:0%;background:#22c55e;"></div>
+        </div>
+        <div id="entryQuality"></div>
+    </div>
+
+    <div class="card">
+        <h2>Entry Timing</h2>
+
+        <div id="delayText">--</div>
+        <div id="peakScore">--</div>
+    </div>
+
     <div id="heatmap"></div>
     <div id="filter-status"></div>
     <div id="performance"></div>
@@ -157,11 +173,61 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                renderDashboard(data);
+                renderSignal(data.signal);
+                renderAnalytics(data.analytics);
             };
         }
 
         connectWS(symbol);
+
+        function renderTiming(timing) {
+
+            if (!timing) return;
+
+            document.getElementById("delayText").innerText =
+                timing.ready ?
+                "ENTRY READY" :
+                `WAIT ${timing.delay_seconds}s`;
+
+            document.getElementById("peakScore").innerText =
+                "Peak Strength: " + timing.confidence_peak;
+        }
+
+        function renderSignal(signal) {
+            if (!signal) {
+                document.getElementById("signal").innerText = "NO DATA";
+                return;
+            }
+
+            if (signal.signal) {
+                document.getElementById("signal").innerText =
+                    `DIGIT ${signal.digit} (${signal.confidence})`;
+            } else {
+                document.getElementById("signal").innerText = "NO TRADE";
+            }
+        }
+
+        function renderEntry(entry) {
+
+            if (!entry) return;
+
+            document.getElementById("entryScore").innerText =
+                entry.score;
+
+            document.getElementById("entryFill").style.width =
+                entry.score + "%";
+
+            document.getElementById("entryQuality").innerText =
+                entry.quality;
+        }
+        renderEntry(data.entry);
+
+        function getColor(value) {
+            if (value > 0.7) return "#22c55e"; // strong
+            if (value > 0.4) return "#facc15"; // medium
+            return "#ef4444"; // weak
+        }
+        div.style.background = getColor(percent / 100);
 
         function setLive() {
             fetch("/mode/live", {
