@@ -10,22 +10,36 @@ class EntryScoring:
 
         confidence = signal.get("confidence", 0)
 
-        # heatmap strength (max probability digit)
+        # -------------------------
+        # FIXED HEATMAP FLATTENING
+        # -------------------------
         max_prob = 0
         if heatmap:
-            flat = [v for d in heatmap.values()]
+            flat = [
+                prob
+                for pattern in heatmap.values()
+                for prob in pattern.values()
+            ]
             if flat:
                 max_prob = max(flat)
 
-        # volatility weighting
+        # -------------------------
+        # VOLATILITY WEIGHTING
+        # -------------------------
         vol_weight = {
             "low": 1.2,
             "mid": 1.0,
             "high": 0.8
         }.get(volatility, 1.0)
 
-        score = (confidence * 70 + max_prob * 30) * vol_weight
+        # -------------------------
+        # STABLE SCORE (0–100)
+        # -------------------------
+        score = (confidence * 0.7 + max_prob * 0.3) * 100 * vol_weight
 
+        # -------------------------
+        # QUALITY LABEL
+        # -------------------------
         if score >= 75:
             quality = "HIGH"
         elif score >= 45:
