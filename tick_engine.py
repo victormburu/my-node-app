@@ -30,7 +30,6 @@ class TickEngine:
     # MAIN PROCESSOR (LIVE + REPLAY)
     # ----------------------------
     def process(self, tick):
-
         price = float(tick["quote"])
         self.prices.append(price)
 
@@ -42,9 +41,7 @@ class TickEngine:
         # =========================
         vol_state = self.vol.update(price)
 
-        # =========================
-        # PATTERN (CONSISTENT)
-        # =========================
+        # consistent pattern
         pattern = (self.prices[-3], self.prices[-2], self.prices[-1])
 
         self.pattern.update(price, vol_state)
@@ -53,9 +50,9 @@ class TickEngine:
             (self.prices[-2], self.prices[-1]),
             vol_state
         )
-        
+
         # =========================
-        # HEATMAP FIRST (IMPORTANT FIX)
+        # HEATMAP UPDATE
         # =========================
         next_digit = int(str(price)[-1])
 
@@ -66,32 +63,48 @@ class TickEngine:
         )
 
         heatmap_data = self.heatmap.build_heatmap()
-        
 
+        # =========================
+        # FILTER
+        # =========================
         filtered = self.filter.validate(
             heatmap_data,
             vol_state,
             (self.prices[-2], self.prices[-1])
         )
-        
+
         # =========================
-        # SIGNAL GENERATION
+        # SIGNAL (SAFE ENTRY FIRST)
         # =========================
-        if filtered and filtered["valid"] and entry["score"] >=45:
+        signal = {
+            "signal": False,
+            "digit": None,
+            "confidence": 0
+        }
+
+        entry = {
+            "score": 0,
+            "quality": "LOW"
+        }
+
+        if filtered and filtered.get("valid"):
+
             signal = {
                 "signal": True,
-                "digit": filtered["digit"],
-                "confidence": filtered["confidence"]
+                "digit": filtered.get("digit"),
+                "confidence": filtered.get("confidence", 0)
             }
-        else:
-            signal = {
-                "signal": False,
-                "digit": None,
-                "confidence": 0
-            }
-        entry = self.scorer.score(signal, heatmap_data, vol_state)
+
+            entry = self.scorer.score(signal, heatmap_data, vol_state)
+
         # =========================
-        # PERFORMANCE TRACKING (SAFE)
+        # ENTRY THRESHOLD FILTER (FIXED)
+        # =========================
+        if not signal["signal"] or entry["score"] < 45:
+            signal["signal"] = False
+
+        # =========================
+        # PERFORMANCE TRACKING
         # =========================
         predicted_digit = signal["digit"]
         actual_digit = next_digit
@@ -103,11 +116,15 @@ class TickEngine:
                 predicted_digit,
                 actual_digit
             )
-        
+
+        # =========================
+        # TIMING MODEL
+        # =========================
         self.timing.update(entry["score"])
         timing = self.timing.estimate_delay()
+
         # =========================
-        # STORE STATE
+        # OUTPUT
         # =========================
         output = {
             "price": price,
