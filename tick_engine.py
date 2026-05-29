@@ -7,162 +7,242 @@ from pattern_engine import PatternEngine
 from entry_scoring import EntryScoring
 from signal_engine import SignalEngine
 from mode_manager import ModeManager
+
 from collections import deque
 
+
 class TickEngine:
+
     def __init__(self):
+
         self.vol = VolatilityEngine()
         self.timing = EntryTimingModel()
         self.performance = PerformanceTracker()
+
         self.pattern = PatternEngine()
         self.filter = HeatmapFilter()
         self.scorer = EntryScoring()
+
         self.signal = SignalEngine()
         self.mode_manager = ModeManager()
+
         self.latest_output = {}
         self.latest = None
+
         self.heatmap = HeatmapEngine()
 
-        # store ONLY numeric prices
+        # store raw prices
         self.prices = deque(maxlen=1000)
 
-    # ----------------------------
-    # MAIN PROCESSOR (LIVE + REPLAY)
-    # ----------------------------
+        # store LAST DIGITS ONLY
+        self.digits = deque(maxlen=1000)
+
+    # =========================================
+    # MAIN PROCESSOR
+    # =========================================
     def process(self, tick):
-        price = float(tick["quote"])
-        self.prices.append(price)
 
-        if len(self.prices) < 3:
-            return None
+        try:
 
-        # =========================
-        # VOLATILITY
-        # =========================
-        vol_state = self.vol.update(price)
+            # -------------------------
+            # PRICE
+            # -------------------------
+            price = float(tick["quote"])
 
-        # consistent pattern
-        pattern = (self.prices[-3], self.prices[-2], self.prices[-1])
+            self.prices.append(price)
 
-        self.pattern.update(price, vol_state)
+            # -------------------------
+            # LAST DIGIT
+            # -------------------------
+            digit = int(str(price)[-1])
 
-        prob = self.pattern.get_probability(
-            pattern,
-            vol_state
-        )
+            self.digits.append(digit)
 
-        # =========================
-        # HEATMAP UPDATE
-        # =========================
-        next_digit = int(str(price)[-1])
+            if len(self.digits) < 3:
+                return None
 
-        self.heatmap.update(
-            vol_state,
-            pattern,
-            next_digit
-        )
+            # -------------------------
+            # VOLATILITY
+            # -------------------------
+            vol_state = self.vol.update(price)
 
-        heatmap_data = self.heatmap.build_heatmap()
-
-        # =========================
-        # FILTER
-        # =========================
-        filtered = self.filter.validate(
-            heatmap_data,
-            vol_state,
-            pattern
-        )
-
-        # =========================
-        # SIGNAL (SAFE ENTRY FIRST)
-        # =========================
-        signal = {
-            "signal": False,
-            "digit": None,
-            "confidence": 0
-        }
-
-        entry = {
-            "score": 0,
-            "quality": "LOW"
-        }
-
-        if filtered and filtered.get("valid"):
-
-            signal = {
-                "signal": True,
-                "digit": filtered.get("digit"),
-                "confidence": filtered.get("confidence", 0)
-            }
-
-            entry = self.scorer.score(signal, heatmap_data, vol_state)
-
-        # =========================
-        # ENTRY THRESHOLD FILTER (FIXED)
-        # =========================
-        if not signal["signal"] or entry["score"] < 45:
-            signal["signal"] = False
-
-        # =========================
-        # PERFORMANCE TRACKING
-        # =========================
-        predicted_digit = signal["digit"]
-        actual_digit = next_digit
-
-        # only record valid signals
-        if (
-            signal.get("signal") and
-            predicted_digit is not None
-        ):
-
-            self.performance.record(
-                pattern,
-                vol_state,
-                int(predicted_digit),
-                int(actual_digit)
+            # -------------------------
+            # DIGIT PATTERN
+            # -------------------------
+            pattern = (
+                self.digits[-3],
+                self.digits[-2]
             )
 
-        # =========================
-        # TIMING MODEL
-        # =========================
-        self.timing.update(entry["score"])
-        timing = self.timing.estimate_delay()
+            # teach engine
+            self.pattern.update(digit, vol_state)
 
-        # =========================
-        # OUTPUT
-        # =========================
-        output = {
-            "price": price,
-            "volatility": vol_state,
-            "pattern": pattern,
-            "probability": prob,
-            "signal": signal,
-            "entry": entry,
-            "timing": timing
-        }
+            # probability map
+            prob = self.pattern.get_probability(
+                pattern,
+                vol_state
+            )
 
-        self.latest_output = output
-        self.latest = output
+            # -------------------------
+            # HEATMAP UPDATE
+            # -------------------------
+            self.heatmap.update(
+                vol_state,
+                pattern,
+                digit
+            )
 
-        return output
-        
+            heatmap_data = self.heatmap.build_heatmap()
+
+            # -------------------------
+            # FILTER VALIDATION
+            # -------------------------
+            filtered = self.filter.validate(
+                heatmap_data,
+                vol_state,
+                pattern
+            )
+
+            # -------------------------
+            # DEFAULT SIGNAL
+            # -------------------------
+            signal = {
+                "signal": False,
+                "digit": None,
+                "confidence": 0
+            }
+
+            entry = {
+                "score": 0,
+                "quality": "LOW"
+            }
+
+            # -------------------------
+            # SIGNAL GENERATION
+            # -------------------------
+            if filtered and filtered.get("valid"):
+
+                signal = {
+                    "signal": True,
+                    "digit": int(filtered["digit"]),
+                    "confidence": float(
+                        filtered.get("confidence", 0)
+                    )
+                }
+
+                entry = self.scorer.score(
+                    signal,
+                    prob,
+                    vol_state
+                )
+
+            # -------------------------
+            # ENTRY FILTER
+            # -------------------------
+            auto_entry_valid = (
+                signal["signal"]
+                and entry["score"] >= 45
+            )
+
+            if not auto_entry_valid:
+
+                signal["signal"] = False
+
+            # -------------------------
+            # PERFORMANCE TRACKING
+            # -------------------------
+            if signal["signal"]:
+
+                self.performance.record(
+                    pattern,
+                    vol_state,
+                    signal["digit"],
+                    digit
+                )
+
+            # -------------------------
+            # TIMING MODEL
+            # -------------------------
+            self.timing.update(entry["score"])
+
+            timing = self.timing.estimate_delay()
+
+            # -------------------------
+            # DIGIT FREQUENCIES
+            # -------------------------
+            frequencies = {}
+
+            for i in range(10):
+
+                value = prob.get(i, 0)
+
+                frequencies[i] = round(
+                    value * 100,
+                    2
+                )
+
+            # -------------------------
+            # OUTPUT
+            # -------------------------
+            output = {
+
+                "price": price,
+
+                "digit": digit,
+
+                "volatility": vol_state,
+
+                "pattern": pattern,
+
+                "probability": prob,
+
+                "frequencies": frequencies,
+
+                "signal": signal,
+
+                "entry": entry,
+
+                "timing": timing
+            }
+
+            self.latest_output = output
+            self.latest = output
+
+            return output
+
+        except Exception as e:
+
+            print("Tick processing error:", e)
+
+            return None
+
+    # =========================================
+    # ANALYTICS
+    # =========================================
     def analytics(self):
 
         if not self.latest_output:
+
             return {
                 "status": "waiting_for_ticks"
             }
 
         return self.latest_output
 
+    # =========================================
+    # SIGNAL STATUS
+    # =========================================
     def generate_signal(self):
+
         return {
             "status": "running"
         }
-    # ----------------------------
-    # REPLAY STEP (IMPORTANT ADDITION)
-    # ----------------------------
+
+    # =========================================
+    # REPLAY MODE
+    # =========================================
     def step(self):
+
         tick = self.mode_manager.next_tick()
 
         if tick is None:

@@ -1,17 +1,12 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Body
 from fastapi.responses import FileResponse
 import asyncio
-from fastapi import Body
+from tick_buffer import TickBuffer
 from tick_engine import TickEngine
 from ws_client import stream_deriv_ticks
 
 app = FastAPI()
-
-streamer = None
-
-# ----------------------------
-# ENGINE REGISTRY
-# ----------------------------
+buffer = TickBuffer()
 ENGINES = {
     "R_10": TickEngine(),
     "R_25": TickEngine(),
@@ -20,79 +15,102 @@ ENGINES = {
     "R_100": TickEngine()
 }
 
+stream_task = None
+
+
 # ----------------------------
-# HEALTH CHECK
+# Helper
 # ----------------------------
-@app.api_route("/", methods=["GET", "HEAD"])
+def get_engine(symbol: str):
+    return ENGINES.get(symbol)
+
+
+# ----------------------------
+# HEALTH
+# ----------------------------
+@app.get("/")
+@app.head("/")
 def home():
     return {"status": "ok", "message": "Tick engine live"}
 
+
+# ----------------------------
+# TICK INPUT
+# ----------------------------
 @app.post("/tick/{symbol}")
 def receive_tick(symbol: str, tick: dict):
-
-    engine = ENGINES.get(symbol)
-
+    engine = get_engine(symbol)
     if not engine:
         return {"error": "invalid symbol"}
 
-    result = engine.process_tick(tick)
+    try:
+        result = engine.process_tick(tick)
+    except Exception as e:
+        return {"error": f"processing failed: {str(e)}"}
 
-    if result is None:
+    if not result:
         return {"error": "invalid tick"}
 
     return {
         "latest": result,
         "signal": result.get("signal")
     }
-    
+
+
+# ----------------------------
+# ANALYTICS
+# ----------------------------
 @app.get("/analytics/{symbol}")
 def analytics(symbol: str):
-
-    engine = ENGINES.get(symbol)
-
+    engine = get_engine(symbol)
     if not engine:
         return {"error": "invalid symbol"}
 
-    return engine.latest or {
-        "status": "waiting"
-    }
+    return engine.latest or {"status": "waiting"}
 
+
+# ----------------------------
+# SIGNAL
+# ----------------------------
 @app.get("/signal/{symbol}")
 def signal(symbol: str):
-
-    engine = ENGINES.get(symbol)
-
+    engine = get_engine(symbol)
     if not engine:
-        return {"signal": False,
-                "status": "no_data"}
+        return {"signal": False, "status": "no_data"}
 
-    return engine.latest["signal"]
+    latest = engine.latest or {}
+    return {"signal": latest.get("signal", False)}
 
+
+# ----------------------------
+# WEBSOCKET STREAM
+# ----------------------------
 @app.websocket("/stream/{symbol}")
 async def stream(websocket: WebSocket, symbol: str):
-
     await websocket.accept()
 
-    engine = ENGINES.get(symbol)
-
+    engine = get_engine(symbol)
     if not engine:
-        await websocket.send_json({
-            "error": "invalid symbol"
-        })
+        await websocket.send_json({"error": "invalid symbol"})
+        await websocket.close()
         return
 
-    while True:
+    try:
+        while True:
+            analytics = engine.analytics()
+            await websocket.send_json({
+                "symbol": symbol,
+                "analytics": analytics
+            })
+            await asyncio.sleep(1)
 
-        analytics = engine.analytics()
+    except WebSocketDisconnect:
+        print(f"🔌 Client disconnected: {symbol}")
 
-        await websocket.send_json({
-            "symbol": symbol,
-            "analytics": analytics
-        })
 
-        await asyncio.sleep(1)
-        
-        
+# ----------------------------
+# STARTUP STREAM
+# ----------------------------
 @app.on_event("startup")
 async def startup_event():
     print("🚀 Booting system...")
@@ -105,49 +123,74 @@ async def startup_event():
                 print("🔁 Restarting stream due to:", e)
                 await asyncio.sleep(3)
 
-    asyncio.create_task(runner())
-    
+    global stream_task
+    stream_task = asyncio.create_task(runner())
+
+
+# ----------------------------
+# DASHBOARD
+# ----------------------------
 @app.get("/dashboard")
 def dashboard():
     return FileResponse("static/index.html")
 
-@app.post("/replay/load/{symbol}")
-async def load_replay(
-    symbol: str,
-    payload: dict = Body(...)
-):
+
+# ----------------------------
+# REPLAY
+# ----------------------------
+@app.get("/replay/load/{symbol}")
+def load_replay(symbol: str):
 
     engine = ENGINES.get(symbol)
-
     if not engine:
         return {"error": "invalid symbol"}
 
-    ticks = payload.get("ticks", [])
+    ticks = buffer.get_ticks(symbol)
 
     engine.set_replay(ticks)
 
     return {
-        "status": "replay loaded",
+        "status": "replay loaded from buffer",
         "count": len(ticks)
     }
 
+# ----------------------------
+# HEATMAP
+# ----------------------------
 @app.get("/heatmap/{symbol}")
 def get_heatmap(symbol: str):
-
-    engine = ENGINES.get(symbol)
-
+    engine = get_engine(symbol)
     if not engine:
         return {"error": "invalid symbol"}
 
     return engine.heatmap.build_heatmap()
 
-@app.get("/performance/{symbol}")
-def performance(symbol: str):
-
+@app.post("/tick/{symbol}")
+def receive_tick(symbol: str, tick: dict):
     engine = ENGINES.get(symbol)
 
     if not engine:
         return {"error": "invalid symbol"}
 
-    return engine.performance.report()
+    # 💾 store tick
+    buffer.add_tick(symbol, tick)
 
+    result = engine.process_tick(tick)
+
+    if not result:
+        return {"error": "invalid tick"}
+
+    return {
+        "latest": result,
+        "signal": result.get("signal")
+    }
+# ----------------------------
+# PERFORMANCE
+# ----------------------------
+@app.get("/performance/{symbol}")
+def performance(symbol: str):
+    engine = get_engine(symbol)
+    if not engine:
+        return {"error": "invalid symbol"}
+
+    return engine.performance.report()

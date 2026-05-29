@@ -4,43 +4,50 @@ from collections import deque
 class EntryTimingModel:
 
     def __init__(self):
-        # stores recent signal strengths over time
-        self.history = deque(maxlen=50)
 
-        self.last_signal_time = None
+        self.history = deque(maxlen=30)
+
+        self.decay_threshold = 45
 
     def update(self, signal_score):
 
-        now = time.time()
-
         self.history.append({
-            "time": now,
+            "time": time.time(),
             "score": signal_score
         })
 
-        self.last_signal_time = now
-
     def estimate_delay(self):
 
-        if len(self.history) < 10:
+        if len(self.history) < 5:
             return {
                 "ready": False,
                 "delay_seconds": None,
-                "confidence_peak": None
+                "confidence_peak": 0,
+                "state": "COLLECTING"
             }
 
-        scores = list(self.history)
+        latest = self.history[-1]["score"]
 
-        # find best future-like peak proxy (local max behavior)
-        peak_index = max(range(len(scores)), key=lambda i: scores[i]["score"])
+        peak = max(x["score"] for x in self.history)
 
-        peak_time = scores[peak_index]["time"]
-        current_time = scores[-1]["time"]
+        # signal still growing
+        if latest >= peak * 0.9:
 
-        delay = peak_time - current_time
+            return {
+                "ready": True,
+                "delay_seconds": 0,
+                "confidence_peak": peak,
+                "state": "ENTRY READY"
+            }
+
+        # signal decaying
+        decay = peak - latest
+
+        delay_seconds = round(decay / 4, 1)
 
         return {
-            "ready": delay <= 0,
-            "delay_seconds": max(0, round(delay, 2)),
-            "confidence_peak": scores[peak_index]["score"]
+            "ready": False,
+            "delay_seconds": delay_seconds,
+            "confidence_peak": peak,
+            "state": "WAITING RE-ENTRY"
         }
