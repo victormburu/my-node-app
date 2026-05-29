@@ -76,16 +76,18 @@ async def stream(websocket: WebSocket, symbol: str):
     engine = ENGINES.get(symbol)
 
     if not engine:
-        await websocket.send_json({"error": "invalid symbol"})
+        await websocket.send_json({
+            "error": "invalid symbol"
+        })
         return
 
     while True:
-        data = engine.analytics()
-        signal = engine.generate_signal()
+
+        analytics = engine.analytics()
 
         await websocket.send_json({
-            "analytics": data,
-            "signal": signal
+            "symbol": symbol,
+            "analytics": analytics
         })
 
         await asyncio.sleep(1)

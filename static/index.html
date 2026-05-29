@@ -158,305 +158,228 @@
     </div>
 
     <script>
-        // DEFAULT MARKET
-        const symbol = document.getElementById("marketSelect").value;
+    let ws;
+    let currentMarket = "R_100";
+    let delayCountdown = 0;
 
-        let ws;
+    // =========================
+    // CONNECT WEBSOCKET
+    // =========================
+    function connectWebSocket() {
 
-        function connectWS(symbol) {
-
-
-            ws = new WebSocket(
-                `wss://deriv-analysis.onrender.com/stream/${symbol}`
-            );
-
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                console.log(data);
-                renderDashboard(data)
-            };
+        if (ws) {
+            ws.close();
         }
 
-        connectWS(symbol);
+        ws = new WebSocket(
+            `wss://deriv-analysis.onrender.com/stream/${currentMarket}`
+        );
 
-        function renderDashboard(data) {
+        ws.onopen = () => {
+            console.log("WS Connected");
+        };
 
-            if (!data) return;
+        ws.onmessage = (event) => {
 
-            // SIGNAL
-            const signalEl = document.getElementById("signal");
+            const payload = JSON.parse(event.data);
 
-            if (data.signal?.signal) {
+            console.log(payload);
 
-                signalEl.innerText =
-                    `DIGIT ${data.signal.digit}`;
+            // backend sends:
+            // {
+            //   symbol,
+            //   analytics,
+            //   signal
+            // }
 
-                signalEl.className = "signal over";
+            renderDashboard(payload.analytics);
+        };
 
-            } else {
+        ws.onclose = () => {
 
-                signalEl.innerText = "NO TRADE";
+            console.log("WS Reconnecting...");
 
-                signalEl.className = "signal no_trade";
+            setTimeout(() => {
+                connectWebSocket();
+            }, 2000);
+        };
+
+        ws.onerror = (err) => {
+            console.log("WS Error", err);
+        };
+    }
+
+    // =========================
+    // MARKET SWITCH
+    // =========================
+    document.getElementById("marketSelect")
+        .addEventListener("change", (e) => {
+
+            currentMarket = e.target.value;
+
+            connectWebSocket();
+        });
+
+    // =========================
+    // MAIN DASHBOARD RENDER
+    // =========================
+    function renderDashboard(data) {
+
+        if (!data) return;
+
+        console.log("Dashboard Data:", data);
+
+        // =========================
+        // SIGNAL
+        // =========================
+        const signalEl =
+            document.getElementById("signal");
+
+        if (data.signal && data.signal.signal) {
+
+            signalEl.innerText =
+                `DIGIT ${data.signal.digit}`;
+
+            signalEl.className =
+                "signal over";
+
+        } else {
+
+            signalEl.innerText =
+                "NO TRADE";
+
+            signalEl.className =
+                "signal no_trade";
+        }
+
+        // =========================
+        // BIAS
+        // =========================
+        document.getElementById("bias").innerText =
+            JSON.stringify({
+                volatility: data.volatility
+            }, null, 2);
+
+        // =========================
+        // PREDICTION
+        // =========================
+        document.getElementById("prediction").innerText =
+            JSON.stringify(data.pattern, null, 2);
+
+        // =========================
+        // FREQUENCY
+        // =========================
+        document.getElementById("freq").innerText =
+            JSON.stringify(data.probability, null, 2);
+
+        // =========================
+        // ENTRY SCORE
+        // =========================
+        if (data.entry) {
+
+            document.getElementById("entryScore")
+                .innerText =
+                data.entry.score;
+
+            document.getElementById("entryFill")
+                .style.width =
+                data.entry.score + "%";
+
+            document.getElementById("entryQuality")
+                .innerText =
+                data.entry.quality;
+        }
+
+        // =========================
+        // TIMING
+        // =========================
+        if (data.timing) {
+
+            delayCountdown =
+                data.timing.delay_seconds;
+
+            document.getElementById("delayText")
+                .innerText =
+                data.timing.ready
+                ? "ENTRY READY"
+                : `WAIT ${delayCountdown}s`;
+
+            document.getElementById("peakScore")
+                .innerText =
+                `Peak Strength: ${data.timing.confidence_peak}`;
+        }
+
+        // =========================
+        // HEATMAP
+        // =========================
+        const heatmap =
+            document.getElementById("heatmap");
+
+        heatmap.innerHTML = "";
+
+        const probs =
+            data.probability || {};
+
+        for (let digit in probs) {
+
+            const percent =
+                (probs[digit] * 100).toFixed(1);
+
+            const row =
+                document.createElement("div");
+
+            row.className = "bar";
+
+            let color = "#ef4444";
+
+            if (percent > 70) {
+                color = "#22c55e";
+            } else if (percent > 40) {
+                color = "#facc15";
             }
 
-            // BIAS
-            document.getElementById("bias").innerText =
-                JSON.stringify(data.volatility, null, 2);
+            row.innerHTML = `
+                <div class="label">${digit}</div>
 
-            // PREDICTION
-            document.getElementById("prediction").innerText =
-                JSON.stringify(data.signal, null, 2);
+                <div class="track">
+                    <div class="fill"
+                        style="
+                            width:${percent}%;
+                            background:${color};
+                        ">
+                    </div>
+                </div>
 
-            // FREQUENCIES
-            document.getElementById("freq").innerText =
-                JSON.stringify(data.pattern, null, 2);
+                <div style="margin-left:10px">
+                    ${percent}%
+                </div>
+            `;
+
+            heatmap.appendChild(row);
         }
+    }
 
+    // =========================
+    // LIVE DELAY COUNTDOWN
+    // =========================
+    setInterval(() => {
 
-        function renderTiming(timing) {
+        if (delayCountdown > 0) {
 
-            if (!timing) return;
+            delayCountdown--;
 
-            document.getElementById("delayText").innerText =
-                timing.ready ?
-                "ENTRY READY" :
-                `WAIT ${timing.delay_seconds}s`;
+            document.getElementById("delayText")
+                .innerText =
+                `WAIT ${delayCountdown}s`;
 
-            document.getElementById("peakScore").innerText =
-                "Peak Strength: " + timing.confidence_peak;
         }
-
-        function renderSignal(signal) {
-            if (!signal) {
-                document.getElementById("signal").innerText = "NO DATA";
-                return;
-            }
-
-            if (signal.signal) {
-                document.getElementById("signal").innerText =
-                    `DIGIT ${signal.digit} (${signal.confidence})`;
-            } else {
-                document.getElementById("signal").innerText = "NO TRADE";
-            }
-        }
-
-        function renderEntry(entry) {
-
-            if (!entry) return;
-
-            document.getElementById("entryScore").innerText =
-                entry.score;
-
-            document.getElementById("entryFill").style.width =
-                entry.score + "%";
-
-            document.getElementById("entryQuality").innerText =
-                entry.quality;
-        }
-        renderEntry(data.entry);
-
-        function getColor(value) {
-            if (value > 0.7) return "#22c55e"; // strong
-            if (value > 0.4) return "#facc15"; // medium
-            return "#ef4444"; // weak
-        }
-        div.style.background = getColor(percent / 100);
-
-        function setLive() {
-            fetch("/mode/live", {
-                method: "POST"
-            });
-        }
-
-        async function loadPerformance(symbol) {
-
-            const res = await fetch(`/performance/${symbol}`);
-            const data = await res.json();
-
-            document.getElementById("performance").innerHTML =
-                JSON.stringify(data, null, 2);
-        }
-
-        document.getElementById("marketSelect")
-            .addEventListener("change", (e) => {
-                connectWS(e.target.value);
-            });
-
-        async function loadReplay() {
-            const res = await fetch("/replay/load/R_25", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(window.backtestData)
-            });
-
-            startReplayLoop();
-        }
-
-        document.getElementById("filter-status").innerText =
-            output.signal.signal ?
-            "VALID SIGNAL" :
-            "FILTERED OUT";
-
-        function renderHeatmap(data) {
-            let html = "";
-
-            for (let vol in data) {
-                html += `<h3>${vol.toUpperCase()} VOLATILITY</h3>`;
-
-                const patterns = data[vol];
-
-                for (let pattern in patterns) {
-                    html += `<b>${pattern}</b><br>`;
-
-                    const digits = patterns[pattern];
-
-                    for (let d in digits) {
-                        html += `Digit ${d}: ${digits[d]} &nbsp;&nbsp;`;
-                    }
-
-                    html += "<br><br>";
-                }
-            }
-
-            document.getElementById("heatmap").innerHTML = html;
-        }
-
-        async function loadHeatmap(symbol) {
-            const res = await fetch(`/heatmap/${symbol}`);
-            const data = await res.json();
-
-            renderHeatmap(data);
-        }
-
-        async function startReplayLoop() {
-            const interval = setInterval(async() => {
-
-                const res = await fetch("/replay/step/R_25");
-                const data = await res.json();
-
-                if (data.done) {
-                    clearInterval(interval);
-                    return;
-                }
-
-                renderTick(data.tick, data.output);
-
-            }, 400);
-        }
-
-        function renderTick(tick, output) {
-            document.getElementById("price").innerText = tick.quote;
-            document.getElementById("vol").innerText = output.volatility;
-
-            if (output.signal ? .signal) {
-                document.getElementById("signal").innerText =
-                    output.signal.digit + " (" + output.signal.confidence + ")";
-            }
-        }
-
-        setInterval(() => {
-            loadHeatmap("R_25");
-        }, 5000);
-
-        function renderDashboard(data) {
-
-            const analytics = data.analytics || {};
-            const signal = data.signal || {};
-
-            document.getElementById("signal").innerText =
-                signal.signal ? `DIGIT ${signal.digit}` : "NO TRADE";
-
-            // BIAS (volatility)
-            document.getElementById("bias").innerText =
-                analytics.volatility || "waiting...";
-
-            // PREDICTION
-            document.getElementById("prediction").innerText =
-                signal.digit ? ? "-";
-        }
-
-        async function fetchData() {
-
-            try {
-
-                // ANALYTICS
-                const res = await fetch(`/analytics/${currentMarket}`);
-                const data = await res.json();
-
-                // SIGNAL
-                const signalRes = await fetch(`/signal/${currentMarket}`);
-                const signalData = await signalRes.json();
-
-                // SIGNAL DISPLAY
-                const signalEl = document.getElementById("signal");
-
-                signalEl.innerText = signalData.signal;
-
-                signalEl.className =
-                    "signal " + signalData.signal.toLowerCase();
-
-                // BIAS
-                document.getElementById("bias").innerText =
-                    JSON.stringify(data.bias, null, 2);
-
-                // PREDICTION
-                document.getElementById("prediction").innerText =
-                    JSON.stringify(data.prediction, null, 2);
-
-                // FREQUENCIES
-                document.getElementById("freq").innerText =
-                    JSON.stringify(data.frequencies, null, 2);
-
-                // HEATMAP
-                const heatmap = document.getElementById("heatmap");
-
-                heatmap.innerHTML = "";
-
-                const probs = data.probabilities;
-
-                for (let i = 0; i < 10; i++) {
-
-                    const value = probs[i] || 0;
-
-                    const percent = (value * 100).toFixed(1);
-
-                    const row = document.createElement("div");
-
-                    row.className = "bar";
-
-                    row.innerHTML = `
-                        <div class="label">${i}</div>
-
-                        <div class="track">
-                            <div class="fill"
-                                style="width:${percent}%">
-                            </div>
-                        </div>
-
-                        <div style="margin-left:10px">
-                            ${percent}%
-                        </div>
-                    `;
-
-                    heatmap.appendChild(row);
-                }
-
-            } catch (err) {
-
-                console.error(err);
-
-            }
-        }
-
-        // AUTO REFRESH
-        setInterval(fetchData, 1000);
-
-        // INITIAL LOAD
-        fetchData();
-    </script>
+    }, 1000);
+
+    // =========================
+    // START
+    // =========================
+    connectWebSocket();
+</script>
 
 </body>
 
