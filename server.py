@@ -120,12 +120,10 @@ async def startup_event():
             try:
                 await stream_deriv_ticks(ENGINES)
             except Exception as e:
-                print("🔁 Restarting stream due to:", e)
+                print("🔁 stream error:", e)
                 await asyncio.sleep(3)
 
-    global stream_task
-    stream_task = asyncio.create_task(runner())
-
+    asyncio.create_task(runner())
 
 # ----------------------------
 # DASHBOARD
