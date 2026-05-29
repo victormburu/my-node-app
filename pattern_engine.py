@@ -35,10 +35,11 @@ class PatternEngine:
         if len(self.ticks) < 3:
             return
 
-        a, b, c = self.ticks[-3], self.ticks[-2], self.ticks[-1]
+        a = int(str(self.ticks[-3])[-1])
+        b = int(str(self.ticks[-2])[-1])
+        c = int(str(self.ticks[-1])[-1])
 
         pattern = (a, b)
-
         self.db[vol_state][pattern].append(c)
 
     # ------------------------

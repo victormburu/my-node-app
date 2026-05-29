@@ -47,7 +47,7 @@ class TickEngine:
         self.pattern.update(price, vol_state)
 
         prob = self.pattern.get_probability(
-            (self.prices[-2], self.prices[-1]),
+            pattern,
             vol_state
         )
 
@@ -58,7 +58,7 @@ class TickEngine:
 
         self.heatmap.update(
             vol_state,
-            (self.prices[-2], self.prices[-1]),
+            pattern,
             next_digit
         )
 
@@ -70,7 +70,7 @@ class TickEngine:
         filtered = self.filter.validate(
             heatmap_data,
             vol_state,
-            (self.prices[-2], self.prices[-1])
+            pattern
         )
 
         # =========================
@@ -109,12 +109,17 @@ class TickEngine:
         predicted_digit = signal["digit"]
         actual_digit = next_digit
 
-        if predicted_digit is not None:
+        # only record valid signals
+        if (
+            signal.get("signal") and
+            predicted_digit is not None
+        ):
+
             self.performance.record(
                 pattern,
                 vol_state,
-                predicted_digit,
-                actual_digit
+                int(predicted_digit),
+                int(actual_digit)
             )
 
         # =========================
